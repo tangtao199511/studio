@@ -27,6 +27,7 @@ import { Loader2, Upload, Download, Paintbrush, ZoomIn, X } from 'lucide-react';
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils"; // Import cn utility function
 
 
 // Helper function to apply filters using Canvas
