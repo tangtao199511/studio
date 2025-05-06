@@ -484,7 +484,7 @@ export default function Home() {
       setProgress(0); // Reset progress on error
     }
   // Removed dependency array elements that are now passed as arguments
-  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress, originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType]); // Added missing dependencies
+  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress, originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType, filteredUrl]); // Added filteredUrl to dependency
 
 
   // Debounced filter application when slider changes
@@ -492,7 +492,7 @@ export default function Home() {
   const debouncedApplyFilter = useCallback(
     debounce(() => {
       handleApplyFilter(originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType);
-    }, 300), // Adjust debounce delay as needed (e.g., 300ms)
+    }, 500), // Increased debounce delay to 500ms
     [handleApplyFilter, originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType] // Include all dependencies used in the debounced call
   );
 
