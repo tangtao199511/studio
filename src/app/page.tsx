@@ -640,18 +640,18 @@ export default function Home() {
   // Determine which URL to display in the main preview area
   // Prioritize: Original Preview (if toggled) > Filtered Preview > Original Preview > Placeholder
   const displayUrl = showOriginalPreview ? previewUrl : (filteredPreviewUrl || previewUrl);
-  const displayAlt = showOriginalPreview ? "Original Photo Preview (Hold)" : (filteredPreviewUrl ? `Photo with ${analogStyle} filter applied` : (previewUrl ? "Original Photo Preview" : "Import a photo"));
+  const displayAlt = showOriginalPreview ? "Original Photo Preview (Hold)" : (filteredPreviewUrl ? `Photo with ${analogStyle} filter applied` : (previewUrl ? "Original Photo Preview" : "Placeholder"));
 
 
   // JSX Return
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-secondary flex flex-col items-center justify-center p-4 md:p-8">
-      <Card className="w-full max-w-7xl shadow-xl overflow-hidden"> {/* Increased max-w further */}
-        <CardHeader className="bg-card border-b p-4 md:p-6">
-          <CardTitle className="text-2xl md:text-3xl font-bold tracking-tight text-center text-primary">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 md:p-8"> {/* Use background variable */}
+      <Card className="w-full max-w-7xl shadow-lg overflow-hidden border-border/50 rounded-lg"> {/* Slightly softer shadow, border */}
+        <CardHeader className="bg-card border-b border-border/50 p-4 md:p-6"> {/* Softer border */}
+          <CardTitle className="text-2xl md:text-3xl font-semibold tracking-tight text-center text-primary"> {/* Adjusted font weight */}
             AnalogLens ✨
           </CardTitle>
-          <CardDescription className="text-center text-muted-foreground mt-1">
+          <CardDescription className="text-center text-muted-foreground mt-1 text-sm"> {/* Adjusted font size */}
             Apply classic analog film styles to your photos instantly.
           </CardDescription>
         </CardHeader>
@@ -661,7 +661,7 @@ export default function Home() {
           <div className="md:col-span-1 space-y-3 md:space-y-4"> {/* Further reduced vertical spacing */}
             {/* Import */}
             <div className="space-y-1"> {/* Reduced space inside control group */}
-              <Label htmlFor="photo-upload" className="text-xs font-medium">1. Import</Label>
+              <Label htmlFor="photo-upload" className="text-xs font-medium text-foreground/80">1. Import</Label> {/* Softer label color */}
               <Button onClick={handleImportClick} variant="outline" size="sm" className="w-full justify-center text-xs"> {/* Smaller text */}
                 <Upload className="mr-1 h-3 w-3" /> {/* Smaller icon and margin */}
                 {selectedFile ? `Selected: ${selectedFile.name.substring(0, 12)}...` : 'Choose Photo'}
@@ -684,7 +684,7 @@ export default function Home() {
 
             {/* Style Selection */}
             <div className="space-y-1">
-              <Label htmlFor="analog-style" className="text-xs font-medium">2. Style</Label>
+              <Label htmlFor="analog-style" className="text-xs font-medium text-foreground/80">2. Style</Label> {/* Softer label color */}
               <Select
                  value={analogStyle}
                  onValueChange={(value) => {
@@ -709,7 +709,7 @@ export default function Home() {
 
             {/* Scene Selection */}
             <div className="space-y-1">
-              <Label htmlFor="scene-category" className="text-xs font-medium">3. Context</Label>
+              <Label htmlFor="scene-category" className="text-xs font-medium text-foreground/80">3. Context</Label> {/* Softer label color */}
               <Select
                  value={sceneCategory}
                  onValueChange={(value) => {
@@ -735,7 +735,7 @@ export default function Home() {
 
              {/* Intensity Slider */}
              <div className="space-y-1">
-               <Label htmlFor="intensity-slider" className="text-xs font-medium">4. Intensity ({filterIntensity}%)</Label>
+               <Label htmlFor="intensity-slider" className="text-xs font-medium text-foreground/80">4. Intensity ({filterIntensity}%)</Label> {/* Softer label color */}
                <Slider
                  id="intensity-slider"
                  min={0}
@@ -808,10 +808,10 @@ export default function Home() {
 
           {/* Right Column: Image Preview (takes 3 parts) */}
           <div className="md:col-span-3 space-y-2 md:space-y-3"> {/* Reduced spacing */}
-             <Label className="text-sm font-medium block text-center">Preview</Label>
+             <Label className="text-sm font-medium block text-center text-foreground/80">Preview</Label> {/* Softer label color */}
              <div
                 // Maintained aspect ratio for a good preview shape
-                className="aspect-w-16 aspect-h-10 w-full bg-muted rounded-lg overflow-hidden border flex items-center justify-center relative shadow-inner cursor-pointer group"
+                className="aspect-w-16 aspect-h-10 w-full bg-muted/50 rounded-lg overflow-hidden border border-border/50 flex items-center justify-center relative shadow-inner cursor-pointer group" // Softer background and border
                 onClick={handleImageClick} // Add click handler to the container
               >
                 {displayUrl ? (
@@ -830,21 +830,21 @@ export default function Home() {
                     />
                     {/* Zoom icon overlay - appears on hover over the preview container */}
                     {(filteredUrl || originalDataUrl) && ( // Show zoom if there's something to zoom into
-                         <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                             <ZoomIn className="h-10 w-10 text-white" />
+                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg"> {/* Added rounded-lg */}
+                             <ZoomIn className="h-10 w-10 text-white/90" /> {/* Slightly transparent icon */}
                          </div>
                     )}
                   </>
                 ) : (
                   // Placeholder when no image is loaded
-                  <div className="text-muted-foreground p-8 text-center">
+                  <div className="text-muted-foreground p-8 text-center flex flex-col items-center justify-center">
                     <Upload className="mx-auto h-10 w-10 md:h-12 md:w-12 mb-2 md:mb-3 opacity-50" /> {/* Smaller margin */}
-                    Import a photo to start
+                    <span className="text-sm">Import a photo to start</span>
                   </div>
                 )}
                  {/* Loading overlay */}
                  {isLoading && (
-                  <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center backdrop-blur-sm space-y-1 z-10"> {/* Reduced spacing */}
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center backdrop-blur-sm space-y-1 z-10 rounded-lg"> {/* Slightly more transparent, added rounded-lg */}
                       <Loader2 className="h-6 w-6 md:h-8 md:w-8 animate-spin text-primary" /> {/* Slightly smaller spinner */}
                       <p className="text-xs md:text-sm text-muted-foreground">Processing...</p>
                        <Progress value={progress} className="w-2/3 max-w-xs h-1 md:h-1.5" /> {/* Thinner progress */}
@@ -854,7 +854,7 @@ export default function Home() {
           </div>
 
         </CardContent>
-         <CardFooter className="border-t bg-card p-2 md:p-3 text-center text-xs text-muted-foreground"> {/* Reduced padding */}
+         <CardFooter className="border-t border-border/50 bg-card p-2 md:p-3 text-center text-xs text-muted-foreground"> {/* Reduced padding, softer border */}
            Client-side Filtering | AnalogLens &copy; {new Date().getFullYear()}
          </CardFooter>
       </Card>
@@ -872,13 +872,13 @@ export default function Home() {
              <div className="relative w-full h-auto max-h-[85vh]"> {/* Removed aspect ratio */}
                  {/* Loading indicator */}
                  {isModalImageLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
+                    <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10 rounded-lg"> {/* Added rounded-lg */}
                         <Loader2 className="h-12 w-12 animate-spin text-primary" />
                     </div>
                  )}
                  {/* Error message */}
                  {modalImageError && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-destructive/20 text-destructive-foreground z-10 p-4">
+                    <div className="absolute inset-0 flex items-center justify-center bg-destructive/20 text-destructive-foreground z-10 p-4 rounded-lg"> {/* Added rounded-lg */}
                        <p className="text-center">Error loading full-size image.</p>
                     </div>
                  )}
@@ -897,7 +897,7 @@ export default function Home() {
                    data-ai-hint="zoomed filtered image"
                    unoptimized // Important for Data URLs
                    className={cn(
-                       "rounded-lg transition-opacity duration-300", // Optional styling
+                       "rounded-lg transition-opacity duration-300 shadow-2xl", // Optional styling, stronger shadow for modal
                        isModalImageLoading || modalImageError ? "opacity-0" : "opacity-100" // Hide image while loading or on error
                    )}
                    onLoad={() => setIsModalImageLoading(false)} // Use onLoad instead of onLoadingComplete for better compatibility maybe?
@@ -919,4 +919,3 @@ export default function Home() {
     </div>
   );
 }
-

@@ -1,8 +1,11 @@
 import type {Metadata} from 'next';
-import { GeistSans } from 'geist/font/sans';
-// Removed GeistMono import as it was causing module not found error
+import { Inter } from 'next/font/google'; // Import Inter
+// Removed GeistSans import as we are switching to Inter
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster" // Import Toaster
+
+// Configure Inter font
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata: Metadata = {
   title: 'AnalogLens',
@@ -17,9 +20,9 @@ export default function RootLayout({
   return (
     // Added suppressHydrationWarning to html tag
     <html lang="en" suppressHydrationWarning={true}>
-      {/* Removed GeistMono variable as it's not imported */}
+      {/* Apply Inter font variable and antialiased class */}
       {/* Added suppressHydrationWarning to body tag to address potential extension interference */}
-      <body className={`${GeistSans.variable} antialiased`} suppressHydrationWarning={true}>
+      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning={true}>
         {children}
         <Toaster /> {/* Add Toaster component here */}
       </body>

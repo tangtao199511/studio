@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { fontFamily } from 'tailwindcss/defaultTheme'; // Import default theme
 
 export default {
     darkMode: ["class"],
@@ -9,6 +10,9 @@ export default {
   ],
   theme: {
   	extend: {
+       fontFamily: {
+         sans: ['var(--font-inter)', ...fontFamily.sans], // Add Inter as the default sans-serif font
+       },
   		colors: {
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
@@ -97,4 +101,3 @@ export default {
       require('@tailwindcss/aspect-ratio'), // Add aspect-ratio plugin
     ],
 } satisfies Config;
-    
