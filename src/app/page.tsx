@@ -1,5 +1,3 @@
-
-
 // src/app/page.tsx
 'use client';
 
@@ -653,9 +651,9 @@ export default function Home() {
 
   // JSX Return
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 md:p-8"> {/* Use background variable */}
-      <Card className="w-full max-w-7xl shadow-lg overflow-hidden border-border/50 rounded-lg"> {/* Slightly softer shadow, border */}
-        <CardHeader className="bg-card border-b border-border/50 p-4 md:p-6"> {/* Softer border */}
+    <div className="h-screen bg-background flex flex-col items-center justify-center p-4 md:p-8"> {/* Use background variable, h-screen */}
+      <Card className="w-full max-w-7xl shadow-lg overflow-hidden border-border/50 rounded-lg flex flex-col flex-grow"> {/* Slightly softer shadow, border, flex flex-col flex-grow */}
+        <CardHeader className="bg-card border-b border-border/50 p-4 md:p-6 flex-shrink-0"> {/* Softer border, flex-shrink-0 */}
           <CardTitle className="text-2xl md:text-3xl font-semibold tracking-tight text-center text-primary"> {/* Adjusted font weight */}
             AnalogLens ✨
           </CardTitle>
@@ -664,9 +662,9 @@ export default function Home() {
           </CardDescription>
         </CardHeader>
         {/* Adjusted grid columns: controls take less space (1/4), preview takes more (3/4) */}
-        <CardContent className="p-4 md:p-6 grid md:grid-cols-4 gap-4 md:gap-6 items-start"> {/* Reduced padding slightly */}
+        <CardContent className="p-4 md:p-6 grid md:grid-cols-4 gap-4 md:gap-6 items-start flex-grow"> {/* Reduced padding slightly, flex-grow */}
           {/* Left Column: Controls (takes 1 part) */}
-          <div className="md:col-span-1 space-y-3 md:space-y-4"> {/* Further reduced vertical spacing */}
+          <div className="md:col-span-1 space-y-3 md:space-y-4 overflow-y-auto h-full pr-2"> {/* Further reduced vertical spacing, added overflow-y-auto, h-full, pr-2 */}
             {/* Import */}
             <div className="space-y-1"> {/* Reduced space inside control group */}
               <Label htmlFor="photo-upload" className="text-xs font-medium text-foreground/80">1. Import</Label> {/* Softer label color */}
@@ -816,11 +814,11 @@ export default function Home() {
           </div>
 
           {/* Right Column: Image Preview (takes 3 parts) */}
-          <div className="md:col-span-3 space-y-2 md:space-y-3"> {/* Reduced spacing */}
-             <Label className="text-sm font-medium block text-center text-foreground/80">Preview</Label> {/* Softer label color */}
+          <div className="md:col-span-3 space-y-2 md:space-y-3 flex flex-col h-full"> {/* Reduced spacing, flex flex-col h-full */}
+             <Label className="text-sm font-medium block text-center text-foreground/80 flex-shrink-0">Preview</Label> {/* Softer label color, flex-shrink-0 */}
              <div
                 // Maintained aspect ratio for a good preview shape
-                className="aspect-w-16 aspect-h-10 w-full bg-muted/50 rounded-lg overflow-hidden border border-border/50 flex items-center justify-center relative shadow-inner cursor-pointer group" // Softer background and border
+                className="w-full bg-muted/50 rounded-lg overflow-hidden border border-border/50 flex items-center justify-center relative shadow-inner cursor-pointer group flex-grow" // Softer background and border, added flex-grow
                 onClick={handleImageClick} // Add click handler to the container
               >
                 {displayUrl ? (
@@ -863,7 +861,7 @@ export default function Home() {
           </div>
 
         </CardContent>
-         <CardFooter className="border-t border-border/50 bg-card p-2 md:p-3 text-center text-xs text-muted-foreground"> {/* Reduced padding, softer border */}
+         <CardFooter className="border-t border-border/50 bg-card p-2 md:p-3 text-center text-xs text-muted-foreground flex-shrink-0"> {/* Reduced padding, softer border, flex-shrink-0 */}
            Client-side Filtering | AnalogLens &copy; {new Date().getFullYear()}
          </CardFooter>
       </Card>
@@ -928,4 +926,3 @@ export default function Home() {
     </div>
   );
 }
-
