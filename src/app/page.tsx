@@ -111,15 +111,16 @@ const applyClientSideFilter = (
       }
     }
 
-    // Draw original image first
-    ctx.filter = 'none';
-    ctx.drawImage(img, 0, 0);
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Apply the calculated filter string
     ctx.filter = filterString.trim() || 'none'; // Ensure 'none' if empty
+
+    // Draw the image ONCE with the filter applied
     ctx.drawImage(img, 0, 0);
 
-    // Reset filter before getting data URL
+    // Reset filter before getting data URL (important for subsequent draws if any)
     ctx.filter = 'none';
 
     try {
@@ -276,6 +277,8 @@ export default function Home() {
                   setFilteredPreviewUrl(null);
                   setProgress(100);
                    toast({ title: "Image Loaded", description: "Preview generated successfully." });
+                   // Automatically apply the default filter once the image is loaded
+                   handleApplyFilter(dataUrl, analogStyle, sceneCategory, filterIntensity, file.type);
               } catch (previewError: any) {
                    console.error("Error generating preview:", previewError);
                    // If preview fails, still try to load the original full res as preview
@@ -285,6 +288,8 @@ export default function Home() {
                    setFilteredPreviewUrl(null);
                    setProgress(100);
                    toast({ title: "Preview Error", description: "Could not generate low-res preview, using original.", variant: "default"});
+                    // Automatically apply the default filter even if preview fails
+                   handleApplyFilter(dataUrl, analogStyle, sceneCategory, filterIntensity, file.type);
               } finally {
                   setIsLoading(false);
                   setTimeout(() => setProgress(0), 1000);
@@ -327,8 +332,15 @@ export default function Home() {
     fileInputRef.current?.click();
   };
 
-  const handleApplyFilter = useCallback(async () => {
-    if (!originalDataUrl) { // Check if the original full-res data URL is available
+  // Updated handleApplyFilter to accept parameters directly
+  const handleApplyFilter = useCallback(async (
+     sourceUrl: string | null = originalDataUrl, // Default to state if not passed
+     style: string = analogStyle,
+     scene: string = sceneCategory,
+     intensity: number = filterIntensity,
+     mimeType: string = currentMimeType
+     ) => {
+    if (!sourceUrl) { // Check if the source URL (original or passed) is available
       toast({
         title: "Error",
         description: "Please import a photo first.",
@@ -341,20 +353,19 @@ export default function Home() {
     setProgress(10); // Initial progress
 
     try {
-       // Use the stored originalDataUrl for filtering
+       // Use the provided sourceUrl for filtering
        const img = new window.Image();
 
        img.onload = async () => {
            setProgress(30); // Progress after image object loaded in memory
            try {
                // Apply filter to the full-resolution image with intensity
-               const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, filterIntensity, currentMimeType);
+               const filteredDataUri = await applyClientSideFilter(img, style, scene, intensity, mimeType);
                setProgress(70); // Progress after filtering
 
                setFilteredUrl(filteredDataUri); // Store full-res filtered image
 
                // Generate low-res preview of the filtered image for the main display
-               // We need a new Image object for this
                const filteredImgForPreview = new window.Image();
                filteredImgForPreview.onload = async () => {
                    try {
@@ -364,18 +375,24 @@ export default function Home() {
                        console.warn("Could not generate filtered preview:", previewError);
                        setFilteredPreviewUrl(filteredDataUri); // Fallback to full-res filtered if preview fails
                    }
+                   setProgress(90); // Progress after filtered preview (potential) generation
                };
                filteredImgForPreview.onerror = () => {
                   console.warn("Error loading filtered image for preview generation");
                   setFilteredPreviewUrl(filteredDataUri); // Fallback
+                   setProgress(90); // Still update progress
                };
                filteredImgForPreview.src = filteredDataUri; // Load the generated full-res filtered image
 
-
-               toast({
-                 title: "Style Applied",
-                 description: `${analogStyle} style applied at ${filterIntensity}% intensity.`, // Updated toast message
-               });
+               // Only show toast if it wasn't triggered by the initial auto-apply
+               // We can check if filteredUrl was null before this call
+               // Or add a flag/parameter if needed for more complex scenarios
+               if (filteredUrl !== null) { // Simple check: only toast on subsequent manual applies
+                 toast({
+                   title: "Style Updated",
+                   description: `${style} style applied at ${intensity}% intensity.`, // Updated toast message
+                 });
+               }
                setProgress(100); // Final progress
            } catch (filterError: any) {
                 console.error('Error applying filter:', filterError);
@@ -393,7 +410,7 @@ export default function Home() {
        };
 
        img.onerror = (errorEvent) => { // Use error event for details
-            console.error('Error loading image data for filtering:', errorEvent);
+            console.error('Error loading image data for filtering:', errorEvent instanceof ErrorEvent ? errorEvent.message : errorEvent);
             toast({
                 title: "Image Load Error",
                 description: `Could not load the image data for processing: ${errorEvent instanceof ErrorEvent ? errorEvent.message : 'Unknown image load error.'}`,
@@ -403,8 +420,8 @@ export default function Home() {
             setProgress(0); // Reset progress on error
        }
 
-       // Start loading the original full-res image data into the Image object
-       img.src = originalDataUrl;
+       // Start loading the image data into the Image object
+       img.src = sourceUrl;
        setProgress(25); // Progress update while image decodes
 
     } catch (error: any) { // Catch errors related to the overall process initiation
@@ -417,23 +434,23 @@ export default function Home() {
       setIsLoading(false);
       setProgress(0); // Reset progress on error
     }
-  }, [originalDataUrl, analogStyle, sceneCategory, filterIntensity, toast, currentMimeType]); // Add filterIntensity to dependency array
+  // Removed dependency array elements that are now passed as arguments
+  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress]);
 
 
   // Debounced filter application when slider changes
+  // Wrapped handleApplyFilter call to pass current state values
   const debouncedApplyFilter = useCallback(
     debounce(() => {
-      handleApplyFilter();
+      handleApplyFilter(originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType);
     }, 300), // Adjust debounce delay as needed (e.g., 300ms)
-    [handleApplyFilter] // Recreate debounce if handleApplyFilter changes
+    [handleApplyFilter, originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType] // Include all dependencies used in the debounced call
   );
 
   const handleIntensityChange = (value: number[]) => {
       setFilterIntensity(value[0]);
       if (originalDataUrl) { // Only apply if an image is loaded
-          // Optionally, apply filter immediately or use debounce
           debouncedApplyFilter(); // Use debounced version for smoother UX
-          // handleApplyFilter(); // Apply immediately (can be laggy)
       }
   };
 
@@ -515,7 +532,7 @@ export default function Home() {
     'Kodak Portra 400', 'Fujifilm Velvia 50', 'Ilford HP5 Plus 400',
     'CineStill 800T', 'Agfa Vista 200', 'Lomography Color Negative 400',
     'Classic Teal & Orange LUT', 'Vintage Sepia Tone', 'Cool Cinematic Look',
-    'Warm Golden Hour LUT'
+    'Warm Golden Hour LUT', 'None' // Added None
   ];
 
   const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food', 'general'];
@@ -558,14 +575,24 @@ export default function Home() {
                 className="hidden"
               />
                {previewUrl && !filteredUrl && (
-                 <p className="text-xs text-muted-foreground text-center">Original loaded.</p>
+                 <p className="text-xs text-muted-foreground text-center">Original loaded. Applying default style...</p>
+               )}
+                {filteredUrl && (
+                 <p className="text-xs text-muted-foreground text-center">Style applied.</p>
                )}
             </div>
 
             {/* Style Selection */}
             <div className="space-y-1.5">
               <Label htmlFor="analog-style" className="text-xs md:text-sm font-medium">2. Select Style</Label>
-              <Select value={analogStyle} onValueChange={(value) => { setAnalogStyle(value); if (originalDataUrl) handleApplyFilter(); }}>
+              <Select
+                 value={analogStyle}
+                 onValueChange={(value) => {
+                    setAnalogStyle(value);
+                    if (originalDataUrl) handleApplyFilter(originalDataUrl, value, sceneCategory, filterIntensity, currentMimeType);
+                  }}
+                  disabled={!originalDataUrl || isLoading} // Disable if no image or loading
+                >
                 <SelectTrigger id="analog-style" className="w-full h-9 text-xs md:text-sm"> {/* Smaller trigger */}
                   <SelectValue placeholder="Choose a style" />
                 </SelectTrigger>
@@ -580,7 +607,14 @@ export default function Home() {
             {/* Scene Selection */}
             <div className="space-y-1.5">
               <Label htmlFor="scene-category" className="text-xs md:text-sm font-medium">3. Select Context</Label>
-              <Select value={sceneCategory} onValueChange={(value) => { setSceneCategory(value); if (originalDataUrl) handleApplyFilter(); }}>
+              <Select
+                 value={sceneCategory}
+                 onValueChange={(value) => {
+                     setSceneCategory(value);
+                     if (originalDataUrl) handleApplyFilter(originalDataUrl, analogStyle, value, filterIntensity, currentMimeType);
+                  }}
+                  disabled={!originalDataUrl || isLoading} // Disable if no image or loading
+                >
                 <SelectTrigger id="scene-category" className="w-full h-9 text-xs md:text-sm"> {/* Smaller trigger */}
                   <SelectValue placeholder="Choose context" />
                 </SelectTrigger>
@@ -604,7 +638,7 @@ export default function Home() {
                  value={[filterIntensity]}
                  onValueChange={handleIntensityChange} // Use the updated handler
                  className="my-2" // Add some margin
-                 disabled={!originalDataUrl} // Disable if no image loaded
+                 disabled={!originalDataUrl || isLoading} // Disable if no image loaded or loading
                />
              </div>
 
@@ -612,7 +646,7 @@ export default function Home() {
              <div className="space-y-1.5">
                 {/* Maybe hide this button or change its text, as filters apply on change now */}
                  <Button
-                    onClick={handleApplyFilter} // Still useful for manual re-application
+                    onClick={() => handleApplyFilter()} // Call without args to use current state
                     disabled={!originalDataUrl || isLoading} // Disable if no original data or loading
                     size="sm" // Smaller button
                     variant="secondary" // Changed variant as primary action is automatic
@@ -659,7 +693,10 @@ export default function Home() {
                  </Button>
             )}
              {!filteredUrl && previewUrl && (
-                 <p className="text-xs text-muted-foreground text-center pt-2">Apply a style to enable export.</p>
+                 <p className="text-xs text-muted-foreground text-center pt-2">Style applied. Export enabled.</p>
+            )}
+             {!previewUrl && (
+                 <p className="text-xs text-muted-foreground text-center pt-2">Import an image to begin.</p>
             )}
 
           </div>
@@ -682,9 +719,6 @@ export default function Home() {
                       style={{ objectFit: 'contain' }} // Use style for objectFit with fill
                       data-ai-hint={showOriginalPreview ? "original preview" : (filteredUrl ? "filtered preview" : "original preview")}
                       // Removed animation class to prevent blinking on state change
-                      // className={cn(
-                      //      {"animate-fade-in": !!filteredUrl && !showOriginalPreview}
-                      // )}
                       unoptimized // Use unoptimized for data URLs and frequent changes
                       priority={!filteredUrl} // Prioritize loading the initial original preview
                     />
@@ -702,9 +736,9 @@ export default function Home() {
                     Import a photo to start
                   </div>
                 )}
-                 {/* Loading overlay */}
+                 {/* Loading overlay (only shows when isLoading is true) */}
                  {isLoading && (
-                  <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center backdrop-blur-sm space-y-2">
+                  <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center backdrop-blur-sm space-y-2 z-10">
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
                       <p className="text-sm text-muted-foreground">Processing...</p>
                        <Progress value={progress} className="w-3/4 max-w-xs h-1.5 md:h-2" />
