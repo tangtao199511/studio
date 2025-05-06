@@ -18,7 +18,8 @@ export default function RootLayout({
     // Added suppressHydrationWarning to html tag
     <html lang="en" suppressHydrationWarning={true}>
       {/* Removed GeistMono variable as it's not imported */}
-      <body className={`${GeistSans.variable} antialiased`}>
+      {/* Added suppressHydrationWarning to body tag to address potential extension interference */}
+      <body className={`${GeistSans.variable} antialiased`} suppressHydrationWarning={true}>
         {children}
         <Toaster /> {/* Add Toaster component here */}
       </body>
