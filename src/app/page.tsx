@@ -144,6 +144,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false); // State for modal visibility
+  const [isModalImageLoading, setIsModalImageLoading] = useState<boolean>(true); // State for modal image loading
+  const [modalImageError, setModalImageError] = useState<boolean>(false); // State for modal image error
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -154,6 +156,7 @@ export default function Home() {
       if (previewUrl && previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(previewUrl);
       }
+      // No need to revoke filteredUrl as it's a data URL
     };
   }, [previewUrl]);
 
@@ -170,11 +173,14 @@ export default function Home() {
         }
 
       setSelectedFile(file);
-      if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+      // Revoke previous blob URL if it exists
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(previewUrl);
+      }
 
       const newPreviewUrl = URL.createObjectURL(file);
       setPreviewUrl(newPreviewUrl);
-      setFilteredUrl(null);
+      setFilteredUrl(null); // Reset filtered image when new file is selected
       setProgress(0);
     }
   };
@@ -194,37 +200,37 @@ export default function Home() {
     }
 
     setIsLoading(true);
-    setProgress(10);
+    setProgress(10); // Initial progress
 
     try {
        const dataUrl = await readFileAsDataURL(selectedFile);
-       setProgress(20);
+       setProgress(20); // Progress after reading file
 
        const img = new window.Image();
 
        img.onload = async () => {
-           setProgress(30);
+           setProgress(30); // Progress after image object loaded in memory
            try {
                const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, 'image/png');
-               setProgress(70);
+               setProgress(70); // Progress after filtering
 
                setFilteredUrl(filteredDataUri);
                toast({
                  title: "Style Applied",
                  description: `${analogStyle} style applied for ${sceneCategory} scene.`,
                });
-               setProgress(100);
-           } catch (filterError: any) { // Catch specific error type if known
+               setProgress(100); // Final progress
+           } catch (filterError: any) {
                 console.error('Error applying filter:', filterError);
                 toast({
                     title: "Filter Error",
-                    // Provide more details if possible from filterError
                     description: `Failed to apply filter styles: ${filterError.message || 'Please try again.'}`,
                     variant: "destructive",
                 });
-                setProgress(0);
+                setProgress(0); // Reset progress on error
            } finally {
                setIsLoading(false);
+               // Keep progress bar at 100 for a short while, then reset
                setTimeout(() => setProgress(0), 1500);
            }
        };
@@ -237,12 +243,14 @@ export default function Home() {
                 variant: "destructive",
             });
             setIsLoading(false);
-            setProgress(0);
+            setProgress(0); // Reset progress on error
        }
 
+       // Start loading the image data into the Image object
        img.src = dataUrl;
+       setProgress(25); // Progress update while image decodes
 
-    } catch (error: any) { // Catch specific error type if known
+    } catch (error: any) {
       console.error('Error reading file for filtering:', error);
       toast({
         title: "File Read Error",
@@ -250,7 +258,7 @@ export default function Home() {
         variant: "destructive",
       });
       setIsLoading(false);
-      setProgress(0);
+      setProgress(0); // Reset progress on error
     }
   }, [selectedFile, analogStyle, sceneCategory, toast]);
 
@@ -268,7 +276,9 @@ export default function Home() {
     const link = document.createElement('a');
     link.href = filteredUrl;
 
-    const extension = 'png';
+    // Determine extension based on MIME type (default to png)
+    const mimeType = filteredUrl.split(';')[0].split(':')[1] || 'image/png';
+    const extension = mimeType.split('/')[1] || 'png';
     const safeStyleName = analogStyle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
     link.download = `AnalogLens_${safeStyleName}_${sceneCategory}_${Date.now()}.${extension}`;
@@ -284,16 +294,29 @@ export default function Home() {
 
   const handleImageClick = () => {
     if (filteredUrl) {
+        setIsModalImageLoading(true); // Reset loading state each time modal opens
+        setModalImageError(false); // Reset error state
         setIsModalOpen(true);
     } else if (previewUrl) {
         // Optionally open original in modal too
+        // setIsModalImageLoading(true); // Reset loading state
+        // setModalImageError(false);
         // setIsModalOpen(true); // If you want to view original large
         toast({
             title: "Preview",
             description: "This is the original image. Apply a style first to view the edited version.",
-            variant: "default", // Use default variant for informational messages
+            variant: "default",
         });
     }
+  }
+
+  const handleModalOpenChange = (open: boolean) => {
+      setIsModalOpen(open);
+      if (!open) {
+          // Optional: Clean up states when modal closes if needed
+          // setIsModalImageLoading(true);
+          // setModalImageError(false);
+      }
   }
 
   const analogStyles = [
@@ -414,7 +437,7 @@ export default function Home() {
                       objectFit="contain"
                       data-ai-hint="filtered image"
                       className="animate-fade-in"
-                      unoptimized
+                      unoptimized // Crucial for Data URLs
                     />
                     {/* Zoom icon overlay */}
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -466,14 +489,26 @@ export default function Home() {
       <Toaster />
 
       {/* Modal Dialog for Full View */}
-       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-         <DialogContent className="max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[60vw] p-0 border-0 bg-transparent shadow-none">
-            <DialogHeader>
-             {/* Visually hidden title for accessibility */}
-             <DialogTitle className="sr-only">Filtered Image Preview</DialogTitle>
+       <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
+         <DialogContent className="max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[60vw] p-0 border-0 bg-transparent shadow-none flex items-center justify-center min-h-[50vh]">
+            <DialogHeader className="hidden"> {/* Visually hidden header for accessibility */}
+             <DialogTitle>Filtered Image Preview</DialogTitle>
            </DialogHeader>
            {filteredUrl && (
              <div className="relative w-full h-auto aspect-[4/3] md:aspect-video"> {/* Adjust aspect ratio as needed */}
+                 {/* Loading indicator */}
+                 {isModalImageLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
+                        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                    </div>
+                 )}
+                 {/* Error message */}
+                 {modalImageError && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-destructive/20 text-destructive-foreground z-10">
+                       <p>Error loading image.</p>
+                    </div>
+                 )}
+                 {/* The Image component */}
                  <Image
                    src={filteredUrl}
                    alt={`Filtered photo - ${analogStyle}`}
@@ -481,11 +516,24 @@ export default function Home() {
                    objectFit="contain"
                    data-ai-hint="zoomed filtered image"
                    unoptimized // Important for Data URLs
-                   className="rounded-lg" // Optional styling
+                   className={cn(
+                       "rounded-lg transition-opacity duration-300", // Optional styling
+                       isModalImageLoading || modalImageError ? "opacity-0" : "opacity-100" // Hide image while loading or on error
+                   )}
+                   onLoadingComplete={() => setIsModalImageLoading(false)}
+                   onError={() => {
+                       setIsModalImageLoading(false);
+                       setModalImageError(true);
+                       toast({
+                           title: "Zoom Error",
+                           description: "Could not load the full-size image.",
+                           variant: "destructive"
+                       });
+                   }}
                  />
              </div>
            )}
-           {/* Explicit Close Button is now handled by ShadCN Dialog's built-in close button */}
+           {/* Close button is automatically handled by ShadCN Dialog */}
          </DialogContent>
        </Dialog>
     </div>
