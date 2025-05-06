@@ -1,3 +1,4 @@
+
 // src/app/page.tsx
 'use client';
 
@@ -51,7 +52,7 @@ const applyClientSideFilter = (
       return;
     }
 
-    // --- Filter definitions ---
+    // --- Filter definitions (Base values at 100% intensity) ---
     const filters: Record<string, Record<string, number>> = {
       'Kodak Portra 400': { contrast: 1.1, saturate: 1.1, brightness: 1.05, sepia: 0.1 },
       'Fujifilm Velvia 50': { saturate: 1.4, contrast: 1.2, brightness: 0.95 },
@@ -67,10 +68,15 @@ const applyClientSideFilter = (
       'Faded Vintage Film': { saturate: 0.8, contrast: 0.9, brightness: 1.1, sepia: 0.2 }, // New Faded
       'Vibrant Summer Day': { saturate: 1.3, brightness: 1.05, contrast: 1.05 }, // New Vibrant
       'Cross Processed Look': { saturate: 1.2, contrast: 1.1, 'hue-rotate': 15, brightness: 0.95 }, // New Cross Processed
+      'Technicolor Dream': { saturate: 1.6, contrast: 1.1, brightness: 1.0, 'hue-rotate': 10 }, // New - Strong Saturation
+      'Bleach Bypass': { contrast: 1.4, saturate: 0.7, brightness: 1.05 }, // New - Desaturated High Contrast
+      'Infrared Simulation': { 'hue-rotate': 180, saturate: 1.2, contrast: 1.1, brightness: 1.1 }, // New - Faux Infrared
+      'Grungy Matte Look': { contrast: 0.9, saturate: 0.9, brightness: 1.05, sepia: 0.1 }, // New - Low Contrast Matte
+      'Neon Noir': { contrast: 1.3, brightness: 0.9, saturate: 1.4, 'hue-rotate': -20 }, // New - High Contrast, Shifted Hues
       'None': {}, // Added None option
     };
 
-    // --- Default values for filters ---
+    // --- Default values for filters (represent 0% intensity) ---
     const defaults: Record<string, number> = {
       contrast: 1,
       saturate: 1,
@@ -82,9 +88,9 @@ const applyClientSideFilter = (
 
     let styleFilters = filters[style] || filters['None']; // Get filters for the selected style
 
-    // --- Scene Adjustments (Modify styleFilters directly) ---
+    // --- Scene Adjustments (Modify styleFilters based on context) ---
     // These adjustments are applied *after* the base style filters are determined
-    // and *before* intensity is applied.
+    // and *before* intensity is applied. They modify the target values.
     let sceneAdjustments: Record<string, number> = {};
     switch (scene) {
       case 'portrait':
@@ -99,52 +105,60 @@ const applyClientSideFilter = (
       case 'street':
         sceneAdjustments = { contrast: 1.1 }; // Increase contrast
         break;
+      case 'waterland': // Example for a new context
+        sceneAdjustments = { brightness: 1.05, saturate: 1.05, 'hue-rotate': -5 }; // Slightly brighter, more saturated, cooler tones
+        break;
+      case 'architecture': // Example
+        sceneAdjustments = { contrast: 1.15, saturate: 0.9 }; // Higher contrast, slightly desaturated
+        break;
+      case 'food': // Example
+        sceneAdjustments = { saturate: 1.1, brightness: 1.05, sepia: 0.05 }; // Boost saturation, slightly brighter, warmer
+        break;
       // Add other scenes if needed
+      case 'general':
       default:
         sceneAdjustments = {}; // No adjustment for general/other scenes
     }
 
-    // Combine base style filters with scene adjustments
-    let combinedFilters = { ...styleFilters };
+    // Combine base style filters with scene adjustments to get the "target" values at 100% intensity
+    let targetFilters = { ...styleFilters };
     for (const [filter, adjustmentValue] of Object.entries(sceneAdjustments)) {
-        const baseValue = combinedFilters[filter] ?? defaults[filter];
+        const baseValue = targetFilters[filter] ?? defaults[filter];
         // For additive adjustments like sepia or hue-rotate, add the adjustment
         if (filter === 'sepia' || filter === 'hue-rotate') {
-            combinedFilters[filter] = baseValue + adjustmentValue;
+            targetFilters[filter] = baseValue + adjustmentValue;
         }
-        // For multiplicative adjustments like contrast, saturate, brightness, multiply
-        else if (filter === 'contrast' || filter === 'saturate' || filter === 'brightness' || filter === 'grayscale') {
-             combinedFilters[filter] = baseValue * adjustmentValue;
+        // For multiplicative adjustments like contrast, saturate, brightness, grayscale, multiply
+        else if (['contrast', 'saturate', 'brightness', 'grayscale'].includes(filter)) {
+             targetFilters[filter] = baseValue * adjustmentValue;
+             // Clamp values if necessary (e.g., brightness/contrast shouldn't go below 0)
+             if (targetFilters[filter] < 0) targetFilters[filter] = 0;
+             if (filter === 'grayscale' && targetFilters[filter] > 1) targetFilters[filter] = 1; // Grayscale max 1
         }
         // Potentially handle other filter types or add new ones if needed
     }
 
 
     // --- Apply Intensity Interpolation ---
-    const intensityFactor = intensity / 100;
+    const intensityFactor = intensity / 100; // Convert percentage to 0-1 range
     let filterString = '';
     // Iterate through all possible filters defined in defaults
     for (const filter of Object.keys(defaults)) {
-        const defaultValue = defaults[filter];
-        // Use the value from combinedFilters if available, otherwise use the default
-        const targetValue = combinedFilters[filter] ?? defaultValue;
+        const defaultValue = defaults[filter]; // Value at 0% intensity
+        // Use the value from combined/adjusted targetFilters if available, otherwise use the default (value at 100% intensity)
+        const targetValue = targetFilters[filter] ?? defaultValue;
 
-        // Apply intensity interpolation only if the target value is different from the default
-        if (targetValue !== defaultValue) {
-            const interpolatedValue = defaultValue + (targetValue - defaultValue) * intensityFactor;
-            if (filter === 'hue-rotate') {
+        // Linear interpolation: value = start + (end - start) * factor
+        const interpolatedValue = defaultValue + (targetValue - defaultValue) * intensityFactor;
+
+        // Add to filter string if the interpolated value is different from the default 0% value
+        // Or if it's grayscale=1 (to handle B&W at less than 100% intensity)
+        // Or if it's hue-rotate with a non-zero value
+        if (Math.abs(interpolatedValue - defaultValue) > 0.001 || (filter === 'grayscale' && targetValue === 1) || (filter === 'hue-rotate' && Math.abs(interpolatedValue) > 0.001)) {
+             if (filter === 'hue-rotate') {
                 filterString += ` ${filter}(${Math.round(interpolatedValue)}deg)`; // hue-rotate needs integer degrees
             } else {
                 filterString += ` ${filter}(${interpolatedValue.toFixed(3)})`; // Use more precision for others
-            }
-        }
-        // If target value is the same as default, but the style explicitly set it (e.g., grayscale: 1)
-        // and intensity is 100%, apply it directly. For intensity < 100%, it won't be applied if it matches default.
-        else if (styleFilters[filter] !== undefined && intensityFactor === 1) {
-             if (filter === 'hue-rotate') {
-                filterString += ` ${filter}(${Math.round(targetValue)}deg)`;
-            } else {
-                filterString += ` ${filter}(${targetValue.toFixed(3)})`;
             }
         }
     }
@@ -344,7 +358,8 @@ export default function Home() {
                   setProgress(100);
                    toast({ title: "Image Loaded", description: "Preview generated successfully." });
                    // Automatically apply the default filter once the image is loaded
-                   handleApplyFilter(dataUrl, analogStyleRef.current, sceneCategoryRef.current, intensityRef.current, file.type);
+                   // Use the current state values for initial application
+                   handleApplyFilter(dataUrl, analogStyle, sceneCategory, filterIntensity, file.type);
               } catch (previewError: any) {
                    console.error("Error generating preview:", previewError);
                    // If preview fails, still try to load the original full res as preview
@@ -355,7 +370,8 @@ export default function Home() {
                    setProgress(100);
                    toast({ title: "Preview Error", description: "Could not generate low-res preview, using original.", variant: "default"});
                     // Automatically apply the default filter even if preview fails
-                   handleApplyFilter(dataUrl, analogStyleRef.current, sceneCategoryRef.current, intensityRef.current, file.type);
+                    // Use the current state values for initial application
+                   handleApplyFilter(dataUrl, analogStyle, sceneCategory, filterIntensity, file.type);
               } finally {
                   setIsLoading(false);
                   setTimeout(() => setProgress(0), 1000);
@@ -399,20 +415,16 @@ export default function Home() {
   };
 
   // Updated handleApplyFilter to accept parameters directly
+  // Renamed parameters to avoid conflict with state variables
   const handleApplyFilter = useCallback(async (
-     sourceUrl: string | null = originalDataUrlRef.current, // Use ref
-     style: string = analogStyleRef.current, // Use ref
-     scene: string = sceneCategoryRef.current, // Use ref
-     intensity: number = intensityRef.current, // Use ref
-     mimeType: string = currentMimeTypeRef.current // Use ref
+     sourceUrlParam: string | null = originalDataUrlRef.current, // Use ref for default
+     styleParam: string = analogStyleRef.current, // Use ref for default
+     sceneParam: string = sceneCategoryRef.current, // Use ref for default
+     intensityParam: number = intensityRef.current, // Use ref for default
+     mimeTypeParam: string = currentMimeTypeRef.current // Use ref for default
      ) => {
-    if (!sourceUrl) { // Check if the source URL (original or passed) is available
+    if (!sourceUrlParam) { // Check the source URL parameter
       // Don't toast if called automatically on load before user interaction
-      // toast({
-      //   title: "Error",
-      //   description: "Please import a photo first.",
-      //   variant: "destructive",
-      // });
       return;
     }
 
@@ -423,14 +435,14 @@ export default function Home() {
     const wasAlreadyFiltered = filteredUrl !== null;
 
     try {
-       // Use the provided sourceUrl for filtering
+       // Use the provided sourceUrlParam for filtering
        const img = new window.Image();
 
        img.onload = async () => {
            setProgress(30); // Progress after image object loaded in memory
            try {
-               // Apply filter to the full-resolution image with intensity
-               const filteredDataUri = await applyClientSideFilter(img, style, scene, intensity, mimeType);
+               // Apply filter to the full-resolution image using the passed parameters
+               const filteredDataUri = await applyClientSideFilter(img, styleParam, sceneParam, intensityParam, mimeTypeParam);
                setProgress(70); // Progress after filtering
 
                setFilteredUrl(filteredDataUri); // Store full-res filtered image
@@ -454,11 +466,17 @@ export default function Home() {
                };
                filteredImgForPreview.src = filteredDataUri; // Load the generated full-res filtered image
 
-               // Only show toast if it wasn't triggered by the initial auto-apply
-               if (wasAlreadyFiltered) { // Only toast on subsequent manual applies or debounced updates
+               // Toast logic based on whether it was already filtered and if parameters changed
+               // Use refs here to compare with the parameters passed to the function
+               const styleChanged = styleParam !== analogStyleRef.current;
+               const sceneChanged = sceneParam !== sceneCategoryRef.current;
+               const intensityChanged = intensityParam !== intensityRef.current;
+
+               // Show toast if it wasn't the initial auto-apply OR if parameters actually changed
+               if (wasAlreadyFiltered || styleChanged || sceneChanged || intensityChanged) {
                  toast({
                    title: "Style Updated",
-                   description: `${style} style applied at ${intensity}% intensity.`, // Updated toast message
+                   description: `${styleParam} style applied to ${sceneParam} context at ${intensityParam}% intensity.`, // Use parameters in toast
                  });
                }
                setProgress(100); // Final progress
@@ -488,8 +506,8 @@ export default function Home() {
             setProgress(0); // Reset progress on error
        }
 
-       // Start loading the image data into the Image object
-       img.src = sourceUrl;
+       // Start loading the image data into the Image object using the source URL parameter
+       img.src = sourceUrlParam;
        setProgress(25); // Progress update while image decodes
 
     } catch (error: any) { // Catch errors related to the overall process initiation
@@ -503,7 +521,8 @@ export default function Home() {
       setProgress(0); // Reset progress on error
     }
   // Ensure all dependencies are correctly listed, focusing on state setters and toast
-  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress, filteredUrl]); // Remove state values from deps, rely on refs inside
+  // Keep handleApplyFilter stable by using refs inside and depending on setters/toast
+  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress, filteredUrl]);
 
 
   // Debounced filter application when slider changes
@@ -515,17 +534,17 @@ export default function Home() {
             originalDataUrlRef.current,
             analogStyleRef.current,
             sceneCategoryRef.current,
-            intensityRef.current,
+            intensityRef.current, // Use the ref's current value
             currentMimeTypeRef.current
         );
-    }, 500), // Keep debounce delay
+    }, 500), // Keep debounce delay at 500ms
     [handleApplyFilter] // handleApplyFilter itself depends on setters and toast, which are stable
   );
 
   const handleIntensityChange = (value: number[]) => {
       const newIntensity = value[0];
       setFilterIntensity(newIntensity); // Update state immediately for the slider UI
-      // Update the ref immediately as well
+      // Update the ref immediately as well - CRITICAL FIX
       intensityRef.current = newIntensity;
       if (originalDataUrlRef.current) { // Check ref for original URL
           debouncedApplyFilter(); // Call the debounced function
@@ -611,7 +630,9 @@ export default function Home() {
     'CineStill 800T', 'Agfa Vista 200', 'Lomography Color Negative 400',
     'Classic Teal & Orange LUT', 'Vintage Sepia Tone', 'Cool Cinematic Look',
     'Warm Golden Hour LUT', 'High Contrast B&W', 'Faded Vintage Film',
-    'Vibrant Summer Day', 'Cross Processed Look', 'None' // Added None
+    'Vibrant Summer Day', 'Cross Processed Look', 'Technicolor Dream',
+    'Bleach Bypass', 'Infrared Simulation', 'Grungy Matte Look', 'Neon Noir',
+    'None' // Added None
   ];
 
   const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food', 'general'];
@@ -625,7 +646,7 @@ export default function Home() {
   // JSX Return
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary flex flex-col items-center justify-center p-4 md:p-8">
-      <Card className="w-full max-w-6xl shadow-xl overflow-hidden"> {/* Increased max-w */}
+      <Card className="w-full max-w-7xl shadow-xl overflow-hidden"> {/* Increased max-w further */}
         <CardHeader className="bg-card border-b p-4 md:p-6">
           <CardTitle className="text-2xl md:text-3xl font-bold tracking-tight text-center text-primary">
             AnalogLens ✨
@@ -634,16 +655,16 @@ export default function Home() {
             Apply classic analog film styles to your photos instantly.
           </CardDescription>
         </CardHeader>
-        {/* Adjusted grid columns: controls take less space (e.g., 1/3), preview takes more (e.g., 2/3) */}
-        <CardContent className="p-4 md:p-8 grid md:grid-cols-3 gap-6 md:gap-8 items-start">
+        {/* Adjusted grid columns: controls take less space (1/4), preview takes more (3/4) */}
+        <CardContent className="p-4 md:p-6 grid md:grid-cols-4 gap-4 md:gap-6 items-start"> {/* Reduced padding slightly */}
           {/* Left Column: Controls (takes 1 part) */}
-          <div className="md:col-span-1 space-y-4 md:space-y-5"> {/* Reduced vertical spacing slightly */}
+          <div className="md:col-span-1 space-y-3 md:space-y-4"> {/* Further reduced vertical spacing */}
             {/* Import */}
-            <div className="space-y-1.5"> {/* Reduced space inside control group */}
-              <Label htmlFor="photo-upload" className="text-xs md:text-sm font-medium">1. Import Photo</Label>
-              <Button onClick={handleImportClick} variant="outline" size="sm" className="w-full justify-center text-xs md:text-sm"> {/* Smaller button */}
-                <Upload className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" /> {/* Smaller icon */}
-                {selectedFile ? `Selected: ${selectedFile.name.substring(0, 15)}...` : 'Choose Photo'}
+            <div className="space-y-1"> {/* Reduced space inside control group */}
+              <Label htmlFor="photo-upload" className="text-xs font-medium">1. Import</Label>
+              <Button onClick={handleImportClick} variant="outline" size="sm" className="w-full justify-center text-xs"> {/* Smaller text */}
+                <Upload className="mr-1 h-3 w-3" /> {/* Smaller icon and margin */}
+                {selectedFile ? `Selected: ${selectedFile.name.substring(0, 12)}...` : 'Choose Photo'}
               </Button>
               <Input
                 id="photo-upload"
@@ -654,63 +675,67 @@ export default function Home() {
                 className="hidden"
               />
                {previewUrl && !filteredUrl && (
-                 <p className="text-xs text-muted-foreground text-center">Original loaded. Applying default style...</p>
+                 <p className="text-xs text-muted-foreground text-center pt-0.5">Applying style...</p> // Reduced padding
                )}
                 {filteredUrl && !isLoading && ( // Only show if not currently loading
-                 <p className="text-xs text-muted-foreground text-center">Style applied.</p>
+                 <p className="text-xs text-muted-foreground text-center pt-0.5">Style applied.</p> // Reduced padding
                )}
             </div>
 
             {/* Style Selection */}
-            <div className="space-y-1.5">
-              <Label htmlFor="analog-style" className="text-xs md:text-sm font-medium">2. Select Style</Label>
+            <div className="space-y-1">
+              <Label htmlFor="analog-style" className="text-xs font-medium">2. Style</Label>
               <Select
                  value={analogStyle}
                  onValueChange={(value) => {
                     setAnalogStyle(value);
-                    // Re-apply filter immediately when style changes, using the current intensity from state
+                     // Update the ref immediately
+                     analogStyleRef.current = value;
+                    // Re-apply filter immediately when style changes, using the current intensity from REF
                     if (originalDataUrlRef.current) handleApplyFilter(originalDataUrlRef.current, value, sceneCategoryRef.current, intensityRef.current, currentMimeTypeRef.current);
                   }}
                   disabled={!originalDataUrl || isLoading} // Disable if no image or loading
                 >
-                <SelectTrigger id="analog-style" className="w-full h-9 text-xs md:text-sm"> {/* Smaller trigger */}
+                <SelectTrigger id="analog-style" className="w-full h-8 text-xs"> {/* Smaller height and text */}
                   <SelectValue placeholder="Choose a style" />
                 </SelectTrigger>
                 <SelectContent>
                   {analogStyles.map(style => (
-                     <SelectItem key={style} value={style} className="text-xs md:text-sm">{style}</SelectItem>
+                     <SelectItem key={style} value={style} className="text-xs">{style}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
             {/* Scene Selection */}
-            <div className="space-y-1.5">
-              <Label htmlFor="scene-category" className="text-xs md:text-sm font-medium">3. Select Context</Label>
+            <div className="space-y-1">
+              <Label htmlFor="scene-category" className="text-xs font-medium">3. Context</Label>
               <Select
                  value={sceneCategory}
                  onValueChange={(value) => {
                      setSceneCategory(value);
-                     // Re-apply filter immediately when scene changes, using the current intensity from state
+                      // Update the ref immediately
+                      sceneCategoryRef.current = value;
+                     // Re-apply filter immediately when scene changes, using the current intensity from REF
                      if (originalDataUrlRef.current) handleApplyFilter(originalDataUrlRef.current, analogStyleRef.current, value, intensityRef.current, currentMimeTypeRef.current);
                   }}
                   disabled={!originalDataUrl || isLoading} // Disable if no image or loading
                 >
-                <SelectTrigger id="scene-category" className="w-full h-9 text-xs md:text-sm"> {/* Smaller trigger */}
+                <SelectTrigger id="scene-category" className="w-full h-8 text-xs"> {/* Smaller height and text */}
                   <SelectValue placeholder="Choose context" />
                 </SelectTrigger>
                 <SelectContent>
                    {sceneCategories.map(scene => (
-                     <SelectItem key={scene} value={scene} className="capitalize text-xs md:text-sm">{scene}</SelectItem>
+                     <SelectItem key={scene} value={scene} className="capitalize text-xs">{scene}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-               <p className="text-xs text-muted-foreground">Fine-tunes the style.</p>
+               <p className="text-xs text-muted-foreground pt-0.5">Fine-tunes style.</p> {/* Reduced padding */}
             </div>
 
              {/* Intensity Slider */}
-             <div className="space-y-1.5">
-               <Label htmlFor="intensity-slider" className="text-xs md:text-sm font-medium">4. Adjust Intensity ({filterIntensity}%)</Label>
+             <div className="space-y-1">
+               <Label htmlFor="intensity-slider" className="text-xs font-medium">4. Intensity ({filterIntensity}%)</Label>
                <Slider
                  id="intensity-slider"
                  min={0}
@@ -718,35 +743,34 @@ export default function Home() {
                  step={1}
                  value={[filterIntensity]} // Controlled component based on state
                  onValueChange={handleIntensityChange} // Use the updated handler with debounce
-                 className="my-2" // Add some margin
+                 className="my-1" // Reduced margin
                  disabled={!originalDataUrl || isLoading} // Disable if no image loaded or loading
                />
              </div>
 
             {/* Apply Filter Button (Now acts more like a re-apply/refresh if needed) */}
-             <div className="space-y-1.5">
-                {/* Maybe hide this button or change its text, as filters apply on change now */}
+             <div className="space-y-1">
                  <Button
-                    onClick={() => handleApplyFilter()} // Call without args to use current REFS (or state if handleApplyFilter reads state)
+                    onClick={() => handleApplyFilter()} // Call without args to use current REFS
                     disabled={!originalDataUrl || isLoading} // Disable if no original data or loading
                     size="sm" // Smaller button
                     variant="secondary" // Changed variant as primary action is automatic
-                    className="w-full text-xs md:text-sm"
+                    className="w-full text-xs h-8" // Smaller text and height
                 >
                     {isLoading ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4 animate-spin" />
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" /> // Smaller icon and margin
                     ) : (
-                     <Paintbrush className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" />
+                     <Paintbrush className="mr-1 h-3 w-3" /> // Smaller icon and margin
                     )}
-                    {isLoading ? 'Applying...' : 'Re-apply Style'}
+                    {isLoading ? 'Applying...' : 'Re-apply'}
                 </Button>
             </div>
 
             {/* Progress Bar */}
              {isLoading && (
-                <div className="space-y-1">
-                    <Progress value={progress} className="w-full h-1.5 md:h-2" /> {/* Slightly thinner bar */}
-                    <p className="text-xs text-muted-foreground text-center">{progress > 0 ? `${progress}%` : ''}</p> {/* Show % only when > 0 */}
+                <div className="space-y-0.5"> {/* Reduced spacing */}
+                    <Progress value={progress} className="w-full h-1 md:h-1.5" /> {/* Even thinner bar */}
+                    <p className="text-xs text-muted-foreground text-center">{progress > 0 ? `${progress}%` : ''}</p>
                 </div>
              )}
 
@@ -755,38 +779,38 @@ export default function Home() {
                  <Button
                     variant="outline"
                     size="sm"
-                    className="w-full text-xs md:text-sm"
+                    className="w-full text-xs h-8" // Smaller text and height
                     onMouseDown={handlePreviewOriginalPress} // Use onMouseDown for press
                     onMouseUp={handlePreviewOriginalRelease} // Use onMouseUp for release
                     onTouchStart={handlePreviewOriginalPress} // Add touch start
                     onTouchEnd={handlePreviewOriginalRelease} // Add touch end
                  >
-                    {showOriginalPreview ? <EyeOff className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" /> : <Eye className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" />}
-                    {showOriginalPreview ? 'Release for Filtered' : 'Hold to Preview Original'}
+                    {showOriginalPreview ? <EyeOff className="mr-1 h-3 w-3" /> : <Eye className="mr-1 h-3 w-3" />} {/* Smaller icon */}
+                    {showOriginalPreview ? 'Release' : 'Hold Original'}
                  </Button>
              )}
 
 
-            {/* Export Button (moved to controls column) */}
+            {/* Export Button */}
             {filteredUrl && (
-                 <Button onClick={handleExport} variant="default" size="sm" className="w-full text-xs md:text-sm">
-                    <Download className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" /> Export Edited
+                 <Button onClick={handleExport} variant="default" size="sm" className="w-full text-xs h-8"> {/* Smaller text and height */}
+                    <Download className="mr-1 h-3 w-3" /> Export {/* Smaller icon */}
                  </Button>
             )}
              {!filteredUrl && previewUrl && !isLoading && ( // Show if preview exists, not filtered yet, and not loading
-                 <p className="text-xs text-muted-foreground text-center pt-2">Style applied. Export will be enabled.</p>
+                 <p className="text-xs text-muted-foreground text-center pt-1">Export enabled soon.</p> // Reduced padding
              )}
              {!previewUrl && (
-                 <p className="text-xs text-muted-foreground text-center pt-2">Import an image to begin.</p>
+                 <p className="text-xs text-muted-foreground text-center pt-1">Import image to start.</p> // Reduced padding
              )}
 
           </div>
 
-          {/* Right Column: Image Preview (takes 2 parts) */}
-          <div className="md:col-span-2 space-y-3 md:space-y-4"> {/* Slightly reduced spacing */}
+          {/* Right Column: Image Preview (takes 3 parts) */}
+          <div className="md:col-span-3 space-y-2 md:space-y-3"> {/* Reduced spacing */}
              <Label className="text-sm font-medium block text-center">Preview</Label>
              <div
-                // Increased aspect ratio for a larger preview area
+                // Maintained aspect ratio for a good preview shape
                 className="aspect-w-16 aspect-h-10 w-full bg-muted rounded-lg overflow-hidden border flex items-center justify-center relative shadow-inner cursor-pointer group"
                 onClick={handleImageClick} // Add click handler to the container
               >
@@ -796,15 +820,16 @@ export default function Home() {
                       src={displayUrl} // Use the determined display URL
                       alt={displayAlt} // Use the determined alt text
                       fill // Changed layout to fill
-                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 800px" // Add sizes prop
+                      sizes="(max-width: 768px) 100vw, 75vw" // Adjusted sizes prop
                       style={{ objectFit: 'contain' }} // Use style for objectFit with fill
                       data-ai-hint={showOriginalPreview ? "original preview" : (filteredUrl ? "filtered preview" : "original preview")}
                       // Removed animation class to prevent blinking on state change
                       unoptimized // Use unoptimized for data URLs and frequent changes
                       priority={!filteredUrl} // Prioritize loading the initial original preview
+                      // Removed explicit transition class to rely on parent state
                     />
                     {/* Zoom icon overlay - appears on hover over the preview container */}
-                    {(filteredUrl || originalDataUrl) && ( // Show zoom if there's something to zoom into (filtered or original full-res)
+                    {(filteredUrl || originalDataUrl) && ( // Show zoom if there's something to zoom into
                          <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                              <ZoomIn className="h-10 w-10 text-white" />
                          </div>
@@ -813,23 +838,23 @@ export default function Home() {
                 ) : (
                   // Placeholder when no image is loaded
                   <div className="text-muted-foreground p-8 text-center">
-                    <Upload className="mx-auto h-10 w-10 md:h-12 md:w-12 mb-3 md:mb-4 opacity-50" /> {/* Slightly smaller icon */}
+                    <Upload className="mx-auto h-10 w-10 md:h-12 md:w-12 mb-2 md:mb-3 opacity-50" /> {/* Smaller margin */}
                     Import a photo to start
                   </div>
                 )}
-                 {/* Loading overlay (only shows when isLoading is true) */}
+                 {/* Loading overlay */}
                  {isLoading && (
-                  <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center backdrop-blur-sm space-y-2 z-10">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                      <p className="text-sm text-muted-foreground">Processing...</p>
-                       <Progress value={progress} className="w-3/4 max-w-xs h-1.5 md:h-2" />
+                  <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center backdrop-blur-sm space-y-1 z-10"> {/* Reduced spacing */}
+                      <Loader2 className="h-6 w-6 md:h-8 md:w-8 animate-spin text-primary" /> {/* Slightly smaller spinner */}
+                      <p className="text-xs md:text-sm text-muted-foreground">Processing...</p>
+                       <Progress value={progress} className="w-2/3 max-w-xs h-1 md:h-1.5" /> {/* Thinner progress */}
                   </div>
                 )}
              </div>
           </div>
 
         </CardContent>
-         <CardFooter className="border-t bg-card p-3 md:p-4 text-center text-xs text-muted-foreground">
+         <CardFooter className="border-t bg-card p-2 md:p-3 text-center text-xs text-muted-foreground"> {/* Reduced padding */}
            Client-side Filtering | AnalogLens &copy; {new Date().getFullYear()}
          </CardFooter>
       </Card>
@@ -895,7 +920,3 @@ export default function Home() {
   );
 }
 
-
-
-// Make sure globals.css includes:
-/* Removed fade-in animation */
