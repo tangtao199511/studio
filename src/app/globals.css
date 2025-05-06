@@ -87,3 +87,14 @@ body {
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* Add keyframes and animation class if they don't exist */
+@layer utilities {
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+}

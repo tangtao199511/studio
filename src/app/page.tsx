@@ -1,12 +1,12 @@
 // src/app/page.tsx
 'use client';
 
-import type {ChangeEvent} from 'react';
-import {useState, useRef, useCallback, useEffect} from 'react';
+import type { ChangeEvent } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import Image from 'next/image';
-import {applyAnalogFilter} from '@/ai/flows/apply-analog-filter';
-import {enhancePhotoDetails} from '@/ai/flows/enhance-photo-details';
-import {Button} from '@/components/ui/button';
+// Removed AI imports: import {applyAnalogFilter} from '@/ai/flows/apply-analog-filter';
+// Removed AI imports: import {enhancePhotoDetails} from '@/ai/flows/enhance-photo-details';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -15,7 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {Label} from '@/components/ui/label';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -23,11 +23,110 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {Input} from '@/components/ui/input';
-import {Loader2, Upload, Download, Wand2} from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, Upload, Download, Paintbrush } from 'lucide-react'; // Changed Wand2 to Paintbrush
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
+
+
+// Helper function to apply filters using Canvas
+const applyClientSideFilter = (
+  img: HTMLImageElement,
+  style: string,
+  scene: string,
+  mimeType: string = 'image/png'
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      reject(new Error('Could not get canvas context'));
+      return;
+    }
+
+    // Define filter presets based on style
+    let filterString = '';
+    switch (style) {
+      case 'Kodak Portra 400':
+        filterString = 'contrast(1.1) saturate(1.1) brightness(1.05) sepia(0.1)';
+        break;
+      case 'Fujifilm Velvia 50':
+        filterString = 'saturate(1.4) contrast(1.2) brightness(0.95)';
+        break;
+      case 'Ilford HP5 Plus 400':
+        filterString = 'grayscale(1) contrast(1.2) brightness(1.1)';
+        break;
+      case 'CineStill 800T': // Tungsten balanced, often cooler shadows, slight halation (hard to replicate fully)
+        filterString = 'contrast(1.15) brightness(1.0) sepia(0.1) hue-rotate(-10deg) saturate(1.1)';
+        break;
+      case 'Agfa Vista 200': // Warmer tones, good saturation
+        filterString = 'contrast(1.05) saturate(1.15) brightness(1.0) sepia(0.15)';
+        break;
+      case 'Lomography Color Negative 400': // High saturation, sometimes quirky colors
+        filterString = 'saturate(1.3) contrast(1.1) brightness(1.0)';
+        break;
+      case 'Classic Teal & Orange LUT':
+        // Approximation using CSS filters - complex LUTs are harder
+        filterString = 'contrast(1.1) sepia(0.2) hue-rotate(-15deg) saturate(1.2)';
+        break;
+      case 'Vintage Sepia Tone':
+        filterString = 'sepia(0.7) contrast(1.05) brightness(0.95)';
+        break;
+      case 'Cool Cinematic Look':
+        filterString = 'contrast(1.1) brightness(0.95) hue-rotate(-10deg) saturate(1.1)';
+        break;
+      case 'Warm Golden Hour LUT':
+        filterString = 'sepia(0.25) contrast(1.05) brightness(1.1) saturate(1.1)';
+        break;
+      default:
+        filterString = 'none';
+    }
+
+     // Basic scene adjustments (can be expanded)
+     switch (scene) {
+         case 'portrait':
+             // Slightly soften contrast for portraits maybe
+             if (!filterString.includes('contrast')) filterString += ' contrast(0.95)';
+             // Add slight warmth maybe?
+             if (!filterString.includes('sepia')) filterString += ' sepia(0.05)';
+             break;
+         case 'landscape':
+             if (!filterString.includes('contrast')) filterString += ' contrast(1.1)'; // Enhance landscape contrast
+             if (!filterString.includes('saturate')) filterString += ' saturate(1.1)'; // Boost saturation slightly
+             break;
+        case 'flowers':
+             if (!filterString.includes('saturate')) filterString += ' saturate(1.2)'; // Boost flower colors
+             break;
+        case 'street':
+             if (!filterString.includes('contrast')) filterString += ' contrast(1.15)'; // Increase contrast for street
+             break;
+         // Add other scenes if needed
+     }
+
+
+    ctx.filter = filterString.trim() || 'none'; // Ensure 'none' if empty
+    ctx.drawImage(img, 0, 0);
+
+    // Reset filter before getting data URL to avoid potential issues
+    ctx.filter = 'none';
+
+    try {
+       resolve(canvas.toDataURL(mimeType)); // Use original file type
+    } catch (e) {
+        console.error("Error converting canvas to data URL:", e);
+        // Fallback to PNG if the original type caused an error (e.g., unsupported format for canvas output)
+         try {
+             resolve(canvas.toDataURL('image/png'));
+         } catch (pngError) {
+             reject(pngError);
+         }
+    }
+  });
+};
 
 
 export default function Home() {
@@ -37,7 +136,7 @@ export default function Home() {
   const [analogStyle, setAnalogStyle] = useState<string>('Kodak Portra 400');
   const [sceneCategory, setSceneCategory] = useState<string>('landscape');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
+  // Removed isEnhancing state
   const [progress, setProgress] = useState<number>(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,10 +145,10 @@ export default function Home() {
   useEffect(() => {
     // Clean up object URLs when component unmounts or file changes
     return () => {
-      if (previewUrl) {
+      if (previewUrl && previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(previewUrl);
       }
-      if (filteredUrl) {
+      if (filteredUrl && filteredUrl.startsWith('blob:')) {
         URL.revokeObjectURL(filteredUrl);
       }
     };
@@ -59,9 +158,9 @@ export default function Home() {
     const file = event.target.files?.[0];
     if (file) {
       setSelectedFile(file);
-      // Revoke previous URLs if they exist
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      if (filteredUrl) URL.revokeObjectURL(filteredUrl);
+      // Revoke previous URLs if they exist and are object URLs
+      if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+      if (filteredUrl && filteredUrl.startsWith('blob:')) URL.revokeObjectURL(filteredUrl);
 
       const newPreviewUrl = URL.createObjectURL(file);
       setPreviewUrl(newPreviewUrl);
@@ -74,17 +173,10 @@ export default function Home() {
     fileInputRef.current?.click();
   };
 
-  const readFileAsDataURL = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-      reader.readAsDataURL(file);
-    });
-  };
+  // Removed readFileAsDataURL as we'll use object URL and Image element
 
   const handleApplyFilter = useCallback(async () => {
-    if (!selectedFile) {
+    if (!selectedFile || !previewUrl) {
       toast({
         title: "Error",
         description: "Please import a photo first.",
@@ -97,100 +189,67 @@ export default function Home() {
     setProgress(10); // Initial progress
 
     try {
-      const photoDataUri = await readFileAsDataURL(selectedFile);
-      setProgress(30); // Progress after reading file
+       const img = new window.Image(); // Use window.Image to avoid conflict with next/image
+       img.src = previewUrl; // Use the object URL
 
-      const result = await applyAnalogFilter({
-        photoDataUri,
-        analogStyle,
-        sceneCategory,
-      });
-      setProgress(70); // Progress after AI processing
+       img.onload = async () => {
+           setProgress(30); // Progress after image loads
+           try {
+               const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, selectedFile.type);
+               setProgress(70); // Progress after filtering
 
-      setFilteredUrl(result.filteredPhotoDataUri);
-      toast({
-        title: "Filter Applied",
-        description: result.enhancementDetails,
-      });
-      setProgress(100); // Final progress
-    } catch (error) {
-      console.error('Error applying filter:', error);
-      toast({
-        title: "Error",
-        description: "Failed to apply filter. Please try again.",
-        variant: "destructive",
-      });
-       setProgress(0); // Reset progress on error
-    } finally {
-      setIsLoading(false);
-      // Optionally reset progress after a short delay
-      setTimeout(() => setProgress(0), 1000);
-    }
-  }, [selectedFile, analogStyle, sceneCategory, toast]);
+                // Revoke previous filtered URL if it exists and it's an object URL
+               if (filteredUrl && filteredUrl.startsWith('blob:')) {
+                    URL.revokeObjectURL(filteredUrl);
+                }
 
+               setFilteredUrl(filteredDataUri); // Set the new data URI
+               toast({
+                 title: "Style Applied",
+                 description: `${analogStyle} style applied for ${sceneCategory} scene.`,
+               });
+               setProgress(100); // Final progress
+           } catch (filterError) {
+                console.error('Error applying filter:', filterError);
+                toast({
+                    title: "Error",
+                    description: "Failed to apply filter. Please try again.",
+                    variant: "destructive",
+                });
+                setProgress(0); // Reset progress on error
+           } finally {
+               setIsLoading(false);
+               setTimeout(() => setProgress(0), 1500); // Reset progress after a short delay
+           }
+       };
 
- const handleEnhanceDetails = useCallback(async () => {
-    const targetUrl = filteredUrl || previewUrl;
-    if (!targetUrl) {
-      toast({
-        title: "Error",
-        description: "Please import or filter a photo first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsEnhancing(true);
-    setProgress(10);
-
-    try {
-        // If targetUrl is an object URL, fetch the blob first
-        let photoDataUri = targetUrl;
-        if (targetUrl.startsWith('blob:')) {
-            const response = await fetch(targetUrl);
-            const blob = await response.blob();
-            photoDataUri = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
+       img.onerror = () => {
+            console.error('Error loading image for filtering');
+            toast({
+                title: "Error",
+                description: "Could not load the image for processing.",
+                variant: "destructive",
             });
-        }
-        setProgress(30);
+            setIsLoading(false);
+            setProgress(0);
+       }
 
-
-      const result = await enhancePhotoDetails({
-        photoDataUri,
-        style: analogStyle,
-        scene: sceneCategory,
-      });
-      setProgress(70);
-
-      // Revoke previous filtered URL if it exists and it's an object URL
-      if (filteredUrl && filteredUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(filteredUrl);
-      }
-      
-      setFilteredUrl(result.enhancedPhotoDataUri);
-      toast({
-        title: "Details Enhanced",
-        description: "Photo details like sharpness and clarity have been improved.",
-      });
-      setProgress(100);
     } catch (error) {
-      console.error('Error enhancing details:', error);
-       toast({
+      // Catch potential errors before image loading (unlikely here but good practice)
+      console.error('Error preparing filter:', error);
+      toast({
         title: "Error",
-        description: "Failed to enhance photo details. Please try again.",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
-       setProgress(0);
-    } finally {
-      setIsEnhancing(false);
-       // Optionally reset progress after a short delay
-      setTimeout(() => setProgress(0), 1000);
+      setIsLoading(false);
+      setProgress(0); // Reset progress on error
     }
-  }, [filteredUrl, previewUrl, analogStyle, sceneCategory, toast]);
+    // No finally here, it's handled inside onload/onerror
+  }, [selectedFile, previewUrl, analogStyle, sceneCategory, filteredUrl, toast]);
+
+
+ // Removed handleEnhanceDetails function
 
 
   const handleExport = () => {
@@ -205,7 +264,14 @@ export default function Home() {
 
     const link = document.createElement('a');
     link.href = filteredUrl;
-    link.download = `AnalogLens_${analogStyle.replace(/\s+/g, '_')}_${sceneCategory}_${Date.now()}.png`; // Suggest a filename
+
+    // Determine file extension based on mime type in data URI
+    const mimeType = filteredUrl.split(';')[0].split(':')[1];
+    const extension = mimeType.split('/')[1] || 'png'; // Default to png
+    const safeStyleName = analogStyle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+
+
+    link.download = `AnalogLens_${safeStyleName}_${sceneCategory}_${Date.now()}.${extension}`; // Suggest a filename
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -217,29 +283,29 @@ export default function Home() {
   };
 
   const analogStyles = [
-    'Kodak Portra 400',
-    'Fujifilm Velvia 50',
-    'Ilford HP5 Plus 400',
-    'CineStill 800T',
-    'Agfa Vista 200',
-    'Lomography Color Negative 400',
-    'Classic Teal & Orange LUT',
-    'Vintage Sepia Tone',
-    'Cool Cinematic Look',
-    'Warm Golden Hour LUT'
+    'Kodak Portra 400', // General purpose, warm, good skin tones
+    'Fujifilm Velvia 50', // High saturation, vivid colors, good for landscapes
+    'Ilford HP5 Plus 400', // Classic black and white, good contrast
+    'CineStill 800T', // Tungsten balanced, cinematic, cool shadows
+    'Agfa Vista 200', // Warm, saturated, slightly vintage feel
+    'Lomography Color Negative 400', // Punchy colors, sometimes experimental look
+    'Classic Teal & Orange LUT', // Popular cinematic grading
+    'Vintage Sepia Tone', // Old-fashioned brown tint
+    'Cool Cinematic Look', // Desaturated blues, moody feel
+    'Warm Golden Hour LUT' // Emulates warm, soft light of golden hour
   ];
 
-  const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food'];
+  const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food', 'general']; // Added general
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary flex flex-col items-center justify-center p-4 md:p-8">
       <Card className="w-full max-w-4xl shadow-xl overflow-hidden">
         <CardHeader className="bg-card border-b p-4 md:p-6">
           <CardTitle className="text-2xl md:text-3xl font-bold tracking-tight text-center text-primary">
-            AnalogLens 📸
+            AnalogLens ✨
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground mt-1">
-            Apply analog film styles and enhance your photos with AI.
+            Apply classic analog film styles to your photos instantly.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-8 grid md:grid-cols-2 gap-6 md:gap-8 items-start">
@@ -260,6 +326,9 @@ export default function Home() {
                 ref={fileInputRef}
                 className="hidden"
               />
+               {previewUrl && !filteredUrl && (
+                 <p className="text-xs text-muted-foreground text-center">Original photo loaded.</p>
+               )}
             </div>
 
             {/* Style Selection */}
@@ -279,53 +348,40 @@ export default function Home() {
 
             {/* Scene Selection */}
             <div className="space-y-2">
-              <Label htmlFor="scene-category" className="text-sm font-medium">3. Select Scene Category</Label>
+              <Label htmlFor="scene-category" className="text-sm font-medium">3. Select Scene Context</Label>
               <Select value={sceneCategory} onValueChange={setSceneCategory}>
                 <SelectTrigger id="scene-category" className="w-full">
-                  <SelectValue placeholder="Choose a scene" />
+                  <SelectValue placeholder="Choose a scene context" />
                 </SelectTrigger>
                 <SelectContent>
                    {sceneCategories.map(scene => (
-                     <SelectItem key={scene} value={scene}>{scene}</SelectItem>
+                     <SelectItem key={scene} value={scene} className="capitalize">{scene}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+               <p className="text-xs text-muted-foreground">Helps fine-tune the selected style.</p>
             </div>
 
             {/* Apply Filter Button */}
              <div className="space-y-2">
-                <Label className="text-sm font-medium">4. Apply & Enhance</Label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                    <Button
-                        onClick={handleApplyFilter}
-                        disabled={!selectedFile || isLoading || isEnhancing}
-                        className="w-full sm:flex-1 bg-primary hover:bg-primary/90"
-                    >
-                        {isLoading ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                         <Wand2 className="mr-2 h-4 w-4" />
-                        )}
-                        {isLoading ? 'Applying...' : 'Apply Filter'}
-                    </Button>
-                    <Button
-                        onClick={handleEnhanceDetails}
-                        disabled={(!previewUrl && !filteredUrl) || isLoading || isEnhancing}
-                        variant="secondary"
-                        className="w-full sm:flex-1"
-                    >
-                        {isEnhancing ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="m10 14 2 2 4-4"></path><path d="M12 20v-4"></path></svg>
-                        )}
-                        {isEnhancing ? 'Enhancing...' : 'Enhance Details'}
-                    </Button>
-                </div>
+                <Label className="text-sm font-medium">4. Apply Style</Label>
+                 <Button
+                    onClick={handleApplyFilter}
+                    disabled={!selectedFile || isLoading}
+                    className="w-full bg-primary hover:bg-primary/90"
+                >
+                    {isLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                     <Paintbrush className="mr-2 h-4 w-4" /> // Changed icon
+                    )}
+                    {isLoading ? 'Applying...' : 'Apply Style'}
+                </Button>
+                {/* Removed Enhance Details Button */}
             </div>
 
             {/* Progress Bar */}
-             {(isLoading || isEnhancing) && (
+             {isLoading && (
                 <div className="space-y-1">
                     <Progress value={progress} className="w-full h-2" />
                     <p className="text-xs text-muted-foreground text-center">Processing... {progress}%</p>
@@ -338,10 +394,11 @@ export default function Home() {
           <div className="space-y-4">
              <Label className="text-sm font-medium block text-center">Preview</Label>
              <div className="aspect-video w-full bg-muted rounded-lg overflow-hidden border flex items-center justify-center relative shadow-inner">
+                {/* Display filtered first, then preview, then placeholder */}
                 {filteredUrl ? (
                   <Image
                     src={filteredUrl}
-                    alt="Filtered Photo"
+                    alt={`Photo with ${analogStyle} filter applied`}
                     layout="fill"
                     objectFit="contain"
                     data-ai-hint="filtered image"
@@ -361,7 +418,7 @@ export default function Home() {
                     Import a photo to start editing
                   </div>
                 )}
-                 {(isLoading || isEnhancing) && (
+                 {isLoading && (
                   <div className="absolute inset-0 bg-background/70 flex items-center justify-center backdrop-blur-sm">
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
@@ -373,11 +430,14 @@ export default function Home() {
                     <Download className="mr-2 h-4 w-4" /> Export Edited Photo
                  </Button>
             )}
+             {!filteredUrl && previewUrl && (
+                 <p className="text-xs text-muted-foreground text-center">Select a style and apply it!</p>
+            )}
           </div>
 
         </CardContent>
          <CardFooter className="border-t bg-card p-4 text-center text-xs text-muted-foreground">
-           Powered by AI | AnalogLens &copy; {new Date().getFullYear()}
+           Client-side Filtering | AnalogLens &copy; {new Date().getFullYear()}
          </CardFooter>
       </Card>
       <Toaster />
@@ -385,6 +445,18 @@ export default function Home() {
   );
 }
 
-// Add fade-in animation to globals.css if it doesn't exist
+// Ensure fade-in animation is in globals.css
 // @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 // .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
+// Make sure globals.css includes:
+/*
+@layer utilities {
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+}
+*/
