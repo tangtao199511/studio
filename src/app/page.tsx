@@ -115,17 +115,24 @@ const applyClientSideFilter = (
     ctx.filter = 'none';
 
     try {
-       resolve(canvas.toDataURL(mimeType)); // Use original file type
+       // Always resolve with PNG for broader compatibility and to avoid potential
+       // issues with canvas.toDataURL supporting the original mimeType.
+       resolve(canvas.toDataURL('image/png'));
     } catch (e) {
         console.error("Error converting canvas to data URL:", e);
-        // Fallback to PNG if the original type caused an error (e.g., unsupported format for canvas output)
-         try {
-             resolve(canvas.toDataURL('image/png'));
-         } catch (pngError) {
-             reject(pngError);
-         }
+        reject(e); // Reject if conversion fails
     }
   });
+};
+
+// Helper function to read file as Data URL
+const readFileAsDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
+    });
 };
 
 
@@ -148,24 +155,37 @@ export default function Home() {
       if (previewUrl && previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(previewUrl);
       }
-      if (filteredUrl && filteredUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(filteredUrl);
-      }
+      // No need to revoke filteredUrl if it's a data URL
+      // if (filteredUrl && filteredUrl.startsWith('blob:')) {
+      //   URL.revokeObjectURL(filteredUrl);
+      // }
     };
-  }, [previewUrl, filteredUrl]);
+  }, [previewUrl]); // Only previewUrl is an object URL now
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      setSelectedFile(file);
-      // Revoke previous URLs if they exist and are object URLs
-      if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
-      if (filteredUrl && filteredUrl.startsWith('blob:')) URL.revokeObjectURL(filteredUrl);
+      // Basic file type check
+       if (!file.type.startsWith('image/')) {
+            toast({
+                title: "Invalid File Type",
+                description: "Please select an image file.",
+                variant: "destructive",
+            });
+            return;
+        }
 
+      setSelectedFile(file);
+      // Revoke previous preview URL if it exists and is an object URL
+      if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+
+      // Create new object URL for preview
       const newPreviewUrl = URL.createObjectURL(file);
       setPreviewUrl(newPreviewUrl);
-      setFilteredUrl(null); // Reset filtered image on new file upload
-      setProgress(0); // Reset progress
+
+      // Reset filtered image and progress on new file upload
+      setFilteredUrl(null);
+      setProgress(0);
     }
   };
 
@@ -173,10 +193,8 @@ export default function Home() {
     fileInputRef.current?.click();
   };
 
-  // Removed readFileAsDataURL as we'll use object URL and Image element
-
   const handleApplyFilter = useCallback(async () => {
-    if (!selectedFile || !previewUrl) {
+    if (!selectedFile) { // Check selectedFile directly
       toast({
         title: "Error",
         description: "Please import a photo first.",
@@ -189,19 +207,18 @@ export default function Home() {
     setProgress(10); // Initial progress
 
     try {
+        // Read the file as a Data URL for stable processing
+       const dataUrl = await readFileAsDataURL(selectedFile);
+       setProgress(20); // Progress after reading file
+
        const img = new window.Image(); // Use window.Image to avoid conflict with next/image
-       img.src = previewUrl; // Use the object URL
 
        img.onload = async () => {
            setProgress(30); // Progress after image loads
            try {
-               const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, selectedFile.type);
+               // Apply filter using the loaded image and get a PNG data URL
+               const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, 'image/png');
                setProgress(70); // Progress after filtering
-
-                // Revoke previous filtered URL if it exists and it's an object URL
-               if (filteredUrl && filteredUrl.startsWith('blob:')) {
-                    URL.revokeObjectURL(filteredUrl);
-                }
 
                setFilteredUrl(filteredDataUri); // Set the new data URI
                toast({
@@ -212,41 +229,45 @@ export default function Home() {
            } catch (filterError) {
                 console.error('Error applying filter:', filterError);
                 toast({
-                    title: "Error",
-                    description: "Failed to apply filter. Please try again.",
+                    title: "Filter Error",
+                    description: "Failed to apply filter styles. Please try again.",
                     variant: "destructive",
                 });
                 setProgress(0); // Reset progress on error
            } finally {
                setIsLoading(false);
-               setTimeout(() => setProgress(0), 1500); // Reset progress after a short delay
+               // Keep progress bar briefly visible after completion/error
+               setTimeout(() => setProgress(0), 1500);
            }
        };
 
-       img.onerror = () => {
-            console.error('Error loading image for filtering');
+       img.onerror = (error) => { // Added error parameter
+            console.error('Error loading image data for filtering:', error);
             toast({
-                title: "Error",
-                description: "Could not load the image for processing.",
+                title: "Image Load Error",
+                description: "Could not load the image data for processing. The file might be corrupted or in an unsupported format.",
                 variant: "destructive",
             });
             setIsLoading(false);
             setProgress(0);
        }
 
+       // Set the source to the Data URL
+       img.src = dataUrl;
+
     } catch (error) {
-      // Catch potential errors before image loading (unlikely here but good practice)
-      console.error('Error preparing filter:', error);
+      // Catch potential errors from readFileAsDataURL
+      console.error('Error reading file for filtering:', error);
       toast({
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
+        title: "File Read Error",
+        description: "Could not read the selected image file. Please try again.",
         variant: "destructive",
       });
       setIsLoading(false);
       setProgress(0); // Reset progress on error
     }
-    // No finally here, it's handled inside onload/onerror
-  }, [selectedFile, previewUrl, analogStyle, sceneCategory, filteredUrl, toast]);
+    // No finally here, it's handled inside onload/onerror/catch
+  }, [selectedFile, analogStyle, sceneCategory, toast]);
 
 
  // Removed handleEnhanceDetails function
@@ -263,13 +284,11 @@ export default function Home() {
     }
 
     const link = document.createElement('a');
-    link.href = filteredUrl;
+    link.href = filteredUrl; // This is now always a data URL
 
-    // Determine file extension based on mime type in data URI
-    const mimeType = filteredUrl.split(';')[0].split(':')[1];
-    const extension = mimeType.split('/')[1] || 'png'; // Default to png
+    // Since filteredUrl is always PNG data URL now
+    const extension = 'png';
     const safeStyleName = analogStyle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-
 
     link.download = `AnalogLens_${safeStyleName}_${sceneCategory}_${Date.now()}.${extension}`; // Suggest a filename
     document.body.appendChild(link);
@@ -397,16 +416,17 @@ export default function Home() {
                 {/* Display filtered first, then preview, then placeholder */}
                 {filteredUrl ? (
                   <Image
-                    src={filteredUrl}
+                    src={filteredUrl} // Now always a data URL
                     alt={`Photo with ${analogStyle} filter applied`}
                     layout="fill"
                     objectFit="contain"
                     data-ai-hint="filtered image"
                     className="animate-fade-in"
+                    unoptimized // Necessary for data URLs in production builds
                   />
                 ) : previewUrl ? (
                   <Image
-                    src={previewUrl}
+                    src={previewUrl} // Object URL for preview only
                     alt="Original Photo Preview"
                     layout="fill"
                     objectFit="contain"
