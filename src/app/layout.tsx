@@ -1,6 +1,6 @@
 import type {Metadata} from 'next';
 import { GeistSans } from 'geist/font/sans';
-import { GeistMono } from 'geist/font/mono';
+// Removed GeistMono import as it was causing module not found error
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster" // Import Toaster
 
@@ -15,8 +15,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
+    // Added suppressHydrationWarning to html tag
+    <html lang="en" suppressHydrationWarning={true}>
+      {/* Removed GeistMono variable as it's not imported */}
+      <body className={`${GeistSans.variable} antialiased`}>
         {children}
         <Toaster /> {/* Add Toaster component here */}
       </body>
