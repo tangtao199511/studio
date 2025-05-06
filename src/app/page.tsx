@@ -554,10 +554,10 @@ export default function Home() {
 
 
   const handleExport = () => {
-    if (!filteredUrl) { // Export the full-res filtered image
+    if (!filteredUrl || !selectedFile) { // Ensure both filtered image and original file exist
       toast({
         title: "Error",
-        description: "No edited photo to export.",
+        description: "No edited photo or original file information to export.",
         variant: "destructive",
       });
       return;
@@ -571,7 +571,14 @@ export default function Home() {
     const extension = mimeType.split('/')[1] || 'png';
     const safeStyleName = analogStyleRef.current.replace(/[^a-z0-9]/gi, '_').toLowerCase(); // Use ref
 
-    link.download = `AnalogLens_${safeStyleName}_${sceneCategoryRef.current}_${intensityRef.current}pct_${Date.now()}.${extension}`; // Use refs
+    // Get original filename without extension
+    const originalFileName = selectedFile.name;
+    const lastDotIndex = originalFileName.lastIndexOf('.');
+    const fileNameWithoutExtension = lastDotIndex === -1 ? originalFileName : originalFileName.substring(0, lastDotIndex);
+
+    // Construct the new filename
+    link.download = `${fileNameWithoutExtension}_AnalogLens_${safeStyleName}_${sceneCategoryRef.current}_${intensityRef.current}pct.${extension}`; // Use refs and original filename
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -921,4 +928,3 @@ export default function Home() {
     </div>
   );
 }
-
