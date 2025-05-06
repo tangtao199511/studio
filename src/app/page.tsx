@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogTrigger, DialogClose } from "@/components/ui/dialog"; // Import Dialog components
+import { Dialog, DialogContent, DialogTrigger, DialogClose, DialogHeader, DialogTitle } from "@/components/ui/dialog"; // Import Dialog components
 import { Loader2, Upload, Download, Paintbrush, ZoomIn, X } from 'lucide-react';
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
@@ -468,6 +468,10 @@ export default function Home() {
       {/* Modal Dialog for Full View */}
        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
          <DialogContent className="max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[60vw] p-0 border-0 bg-transparent shadow-none">
+            <DialogHeader>
+             {/* Visually hidden title for accessibility */}
+             <DialogTitle className="sr-only">Filtered Image Preview</DialogTitle>
+           </DialogHeader>
            {filteredUrl && (
              <div className="relative w-full h-auto aspect-[4/3] md:aspect-video"> {/* Adjust aspect ratio as needed */}
                  <Image
@@ -481,13 +485,7 @@ export default function Home() {
                  />
              </div>
            )}
-           {/* Explicit Close Button (optional, Dialog has one built-in) */}
-           {/* <DialogClose asChild>
-                <Button variant="ghost" size="icon" className="absolute top-2 right-2 text-white bg-black/50 hover:bg-black/70">
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">Close</span>
-                </Button>
-            </DialogClose> */}
+           {/* Explicit Close Button is now handled by ShadCN Dialog's built-in close button */}
          </DialogContent>
        </Dialog>
     </div>
