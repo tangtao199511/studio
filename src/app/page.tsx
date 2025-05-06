@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTrigger, DialogClose, DialogHeader, DialogTitle } from "@/components/ui/dialog"; // Import Dialog components
+import { Slider } from "@/components/ui/slider"; // Import Slider component
 import { Loader2, Upload, Download, Paintbrush, ZoomIn, X, Eye, EyeOff } from 'lucide-react'; // Added Eye, EyeOff
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
@@ -36,6 +37,7 @@ const applyClientSideFilter = (
   img: HTMLImageElement,
   style: string,
   scene: string,
+  intensity: number, // Add intensity parameter (0-100)
   mimeType: string = 'image/png',
   quality: number = 0.92 // Default quality for JPEG/WebP
 ): Promise<string> => {
@@ -50,70 +52,74 @@ const applyClientSideFilter = (
       return;
     }
 
-    // Define filter presets based on style
-    let filterString = '';
-    switch (style) {
-      case 'Kodak Portra 400':
-        filterString = 'contrast(1.1) saturate(1.1) brightness(1.05) sepia(0.1)';
+    // --- Filter definitions ---
+    const filters: Record<string, Record<string, number>> = {
+      'Kodak Portra 400': { contrast: 1.1, saturate: 1.1, brightness: 1.05, sepia: 0.1 },
+      'Fujifilm Velvia 50': { saturate: 1.4, contrast: 1.2, brightness: 0.95 },
+      'Ilford HP5 Plus 400': { grayscale: 1, contrast: 1.2, brightness: 1.1 },
+      'CineStill 800T': { contrast: 1.15, brightness: 1.0, sepia: 0.1, 'hue-rotate': -10, saturate: 1.1 },
+      'Agfa Vista 200': { contrast: 1.05, saturate: 1.15, brightness: 1.0, sepia: 0.15 },
+      'Lomography Color Negative 400': { saturate: 1.3, contrast: 1.1, brightness: 1.0 },
+      'Classic Teal & Orange LUT': { contrast: 1.1, sepia: 0.2, 'hue-rotate': -15, saturate: 1.2 },
+      'Vintage Sepia Tone': { sepia: 0.7, contrast: 1.05, brightness: 0.95 },
+      'Cool Cinematic Look': { contrast: 1.1, brightness: 0.95, 'hue-rotate': -10, saturate: 1.1 },
+      'Warm Golden Hour LUT': { sepia: 0.25, contrast: 1.05, brightness: 1.1, saturate: 1.1 },
+      'None': {}, // Added None option
+    };
+
+    // --- Default values for filters ---
+    const defaults: Record<string, number> = {
+      contrast: 1,
+      saturate: 1,
+      brightness: 1,
+      sepia: 0,
+      grayscale: 0,
+      'hue-rotate': 0,
+    };
+
+    let styleFilters = filters[style] || filters['None']; // Get filters for the selected style
+
+    // --- Scene Adjustments (Modify styleFilters directly) ---
+    switch (scene) {
+      case 'portrait':
+        styleFilters = { ...styleFilters, contrast: (styleFilters.contrast ?? defaults.contrast) * 0.95, sepia: (styleFilters.sepia ?? defaults.sepia) + 0.05 };
         break;
-      case 'Fujifilm Velvia 50':
-        filterString = 'saturate(1.4) contrast(1.2) brightness(0.95)';
+      case 'landscape':
+        styleFilters = { ...styleFilters, contrast: (styleFilters.contrast ?? defaults.contrast) * 1.05, saturate: (styleFilters.saturate ?? defaults.saturate) * 1.05 };
         break;
-      case 'Ilford HP5 Plus 400':
-        filterString = 'grayscale(1) contrast(1.2) brightness(1.1)';
+      case 'flowers':
+        styleFilters = { ...styleFilters, saturate: (styleFilters.saturate ?? defaults.saturate) * 1.1 };
         break;
-      case 'CineStill 800T': // Tungsten balanced, often cooler shadows, slight halation (hard to replicate fully)
-        filterString = 'contrast(1.15) brightness(1.0) sepia(0.1) hue-rotate(-10deg) saturate(1.1)';
+      case 'street':
+        styleFilters = { ...styleFilters, contrast: (styleFilters.contrast ?? defaults.contrast) * 1.1 };
         break;
-      case 'Agfa Vista 200': // Warmer tones, good saturation
-        filterString = 'contrast(1.05) saturate(1.15) brightness(1.0) sepia(0.15)';
-        break;
-      case 'Lomography Color Negative 400': // High saturation, sometimes quirky colors
-        filterString = 'saturate(1.3) contrast(1.1) brightness(1.0)';
-        break;
-      case 'Classic Teal & Orange LUT':
-        // Approximation using CSS filters - complex LUTs are harder
-        filterString = 'contrast(1.1) sepia(0.2) hue-rotate(-15deg) saturate(1.2)';
-        break;
-      case 'Vintage Sepia Tone':
-        filterString = 'sepia(0.7) contrast(1.05) brightness(0.95)';
-        break;
-      case 'Cool Cinematic Look':
-        filterString = 'contrast(1.1) brightness(0.95) hue-rotate(-10deg) saturate(1.1)';
-        break;
-      case 'Warm Golden Hour LUT':
-        filterString = 'sepia(0.25) contrast(1.05) brightness(1.1) saturate(1.1)';
-        break;
-      default:
-        filterString = 'none';
+      // Add other scenes if needed
     }
 
-     // Basic scene adjustments (can be expanded)
-     switch (scene) {
-         case 'portrait':
-             // Slightly soften contrast for portraits maybe
-             if (!filterString.includes('contrast')) filterString += ' contrast(0.95)';
-             // Add slight warmth maybe?
-             if (!filterString.includes('sepia')) filterString += ' sepia(0.05)';
-             break;
-         case 'landscape':
-             if (!filterString.includes('contrast')) filterString += ' contrast(1.1)'; // Enhance landscape contrast
-             if (!filterString.includes('saturate')) filterString += ' saturate(1.1)'; // Boost saturation slightly
-             break;
-        case 'flowers':
-             if (!filterString.includes('saturate')) filterString += ' saturate(1.2)'; // Boost flower colors
-             break;
-        case 'street':
-             if (!filterString.includes('contrast')) filterString += ' contrast(1.15)'; // Increase contrast for street
-             break;
-         // Add other scenes if needed
-     }
+    // --- Apply Intensity Interpolation ---
+    const intensityFactor = intensity / 100;
+    let filterString = '';
+    for (const [filter, targetValue] of Object.entries(styleFilters)) {
+      const defaultValue = defaults[filter];
+      if (defaultValue !== undefined) {
+        const interpolatedValue = defaultValue + (targetValue - defaultValue) * intensityFactor;
+        if (filter === 'hue-rotate') {
+          filterString += ` ${filter}(${Math.round(interpolatedValue)}deg)`; // hue-rotate needs integer degrees
+        } else {
+          filterString += ` ${filter}(${interpolatedValue.toFixed(3)})`; // Use more precision for others
+        }
+      }
+    }
 
+    // Draw original image first
+    ctx.filter = 'none';
+    ctx.drawImage(img, 0, 0);
 
+    // Apply the calculated filter string
     ctx.filter = filterString.trim() || 'none'; // Ensure 'none' if empty
     ctx.drawImage(img, 0, 0);
 
-    // Reset filter before getting data URL to avoid potential issues
+    // Reset filter before getting data URL
     ctx.filter = 'none';
 
     try {
@@ -216,6 +222,7 @@ export default function Home() {
   const [filteredPreviewUrl, setFilteredPreviewUrl] = useState<string | null>(null); // Optional: low-res filtered preview
   const [analogStyle, setAnalogStyle] = useState<string>('Kodak Portra 400');
   const [sceneCategory, setSceneCategory] = useState<string>('landscape');
+  const [filterIntensity, setFilterIntensity] = useState<number>(100); // Add state for intensity (0-100)
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false); // State for modal visibility
@@ -340,8 +347,8 @@ export default function Home() {
        img.onload = async () => {
            setProgress(30); // Progress after image object loaded in memory
            try {
-               // Apply filter to the full-resolution image
-               const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, currentMimeType);
+               // Apply filter to the full-resolution image with intensity
+               const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, filterIntensity, currentMimeType);
                setProgress(70); // Progress after filtering
 
                setFilteredUrl(filteredDataUri); // Store full-res filtered image
@@ -367,7 +374,7 @@ export default function Home() {
 
                toast({
                  title: "Style Applied",
-                 description: `${analogStyle} style applied for ${sceneCategory} scene.`,
+                 description: `${analogStyle} style applied at ${filterIntensity}% intensity.`, // Updated toast message
                });
                setProgress(100); // Final progress
            } catch (filterError: any) {
@@ -410,7 +417,25 @@ export default function Home() {
       setIsLoading(false);
       setProgress(0); // Reset progress on error
     }
-  }, [originalDataUrl, analogStyle, sceneCategory, toast, currentMimeType]);
+  }, [originalDataUrl, analogStyle, sceneCategory, filterIntensity, toast, currentMimeType]); // Add filterIntensity to dependency array
+
+
+  // Debounced filter application when slider changes
+  const debouncedApplyFilter = useCallback(
+    debounce(() => {
+      handleApplyFilter();
+    }, 300), // Adjust debounce delay as needed (e.g., 300ms)
+    [handleApplyFilter] // Recreate debounce if handleApplyFilter changes
+  );
+
+  const handleIntensityChange = (value: number[]) => {
+      setFilterIntensity(value[0]);
+      if (originalDataUrl) { // Only apply if an image is loaded
+          // Optionally, apply filter immediately or use debounce
+          debouncedApplyFilter(); // Use debounced version for smoother UX
+          // handleApplyFilter(); // Apply immediately (can be laggy)
+      }
+  };
 
 
   const handleExport = () => {
@@ -431,7 +456,7 @@ export default function Home() {
     const extension = mimeType.split('/')[1] || 'png';
     const safeStyleName = analogStyle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
-    link.download = `AnalogLens_${safeStyleName}_${sceneCategory}_${Date.now()}.${extension}`;
+    link.download = `AnalogLens_${safeStyleName}_${sceneCategory}_${filterIntensity}pct_${Date.now()}.${extension}`; // Include intensity in filename
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -540,7 +565,7 @@ export default function Home() {
             {/* Style Selection */}
             <div className="space-y-1.5">
               <Label htmlFor="analog-style" className="text-xs md:text-sm font-medium">2. Select Style</Label>
-              <Select value={analogStyle} onValueChange={setAnalogStyle}>
+              <Select value={analogStyle} onValueChange={(value) => { setAnalogStyle(value); if (originalDataUrl) handleApplyFilter(); }}>
                 <SelectTrigger id="analog-style" className="w-full h-9 text-xs md:text-sm"> {/* Smaller trigger */}
                   <SelectValue placeholder="Choose a style" />
                 </SelectTrigger>
@@ -555,7 +580,7 @@ export default function Home() {
             {/* Scene Selection */}
             <div className="space-y-1.5">
               <Label htmlFor="scene-category" className="text-xs md:text-sm font-medium">3. Select Context</Label>
-              <Select value={sceneCategory} onValueChange={setSceneCategory}>
+              <Select value={sceneCategory} onValueChange={(value) => { setSceneCategory(value); if (originalDataUrl) handleApplyFilter(); }}>
                 <SelectTrigger id="scene-category" className="w-full h-9 text-xs md:text-sm"> {/* Smaller trigger */}
                   <SelectValue placeholder="Choose context" />
                 </SelectTrigger>
@@ -568,21 +593,37 @@ export default function Home() {
                <p className="text-xs text-muted-foreground">Fine-tunes the style.</p>
             </div>
 
-            {/* Apply Filter Button */}
+             {/* Intensity Slider */}
              <div className="space-y-1.5">
-                <Label className="text-xs md:text-sm font-medium">4. Apply Style</Label>
+               <Label htmlFor="intensity-slider" className="text-xs md:text-sm font-medium">4. Adjust Intensity ({filterIntensity}%)</Label>
+               <Slider
+                 id="intensity-slider"
+                 min={0}
+                 max={100}
+                 step={1}
+                 value={[filterIntensity]}
+                 onValueChange={handleIntensityChange} // Use the updated handler
+                 className="my-2" // Add some margin
+                 disabled={!originalDataUrl} // Disable if no image loaded
+               />
+             </div>
+
+            {/* Apply Filter Button (Now acts more like a re-apply/refresh if needed) */}
+             <div className="space-y-1.5">
+                {/* Maybe hide this button or change its text, as filters apply on change now */}
                  <Button
-                    onClick={handleApplyFilter}
-                    disabled={!originalDataUrl || isLoading} // Disable if no original data
+                    onClick={handleApplyFilter} // Still useful for manual re-application
+                    disabled={!originalDataUrl || isLoading} // Disable if no original data or loading
                     size="sm" // Smaller button
-                    className="w-full bg-primary hover:bg-primary/90 text-xs md:text-sm"
+                    variant="secondary" // Changed variant as primary action is automatic
+                    className="w-full text-xs md:text-sm"
                 >
                     {isLoading ? (
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4 animate-spin" />
                     ) : (
                      <Paintbrush className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" />
                     )}
-                    {isLoading ? 'Applying...' : 'Apply Style'}
+                    {isLoading ? 'Applying...' : 'Re-apply Style'}
                 </Button>
             </div>
 
@@ -739,6 +780,20 @@ export default function Home() {
   );
 }
 
+
+// Debounce helper function
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  return function(this: ThisParameterType<T>, ...args: Parameters<T>) {
+    const context = this;
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func.apply(context, args);
+    }, wait);
+  };
+}
 
 // Make sure globals.css includes:
 /*
