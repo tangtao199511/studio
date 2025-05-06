@@ -27,7 +27,7 @@ import { Loader2, Upload, Download, Paintbrush, ZoomIn, X } from 'lucide-react';
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils"; // Import cn utility function
+import { cn } from "@/lib/utils";
 
 
 // Helper function to apply filters using Canvas
@@ -35,7 +35,8 @@ const applyClientSideFilter = (
   img: HTMLImageElement,
   style: string,
   scene: string,
-  mimeType: string = 'image/png'
+  mimeType: string = 'image/png',
+  quality: number = 0.92 // Default quality for JPEG/WebP
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
@@ -115,15 +116,28 @@ const applyClientSideFilter = (
     ctx.filter = 'none';
 
     try {
-       // Always resolve with PNG for broader compatibility and to avoid potential
-       // issues with canvas.toDataURL supporting the original mimeType.
-       resolve(canvas.toDataURL('image/png'));
+       // Determine output format based on input mime type, default to PNG
+       let outputMimeType = 'image/png';
+       if (mimeType === 'image/jpeg') {
+           outputMimeType = 'image/jpeg';
+       } else if (mimeType === 'image/webp') {
+           outputMimeType = 'image/webp';
+       }
+       // Use the determined mime type and quality for JPEG/WebP
+       resolve(canvas.toDataURL(outputMimeType, quality));
     } catch (e) {
         console.error("Error converting canvas to data URL:", e);
-        reject(e); // Reject if conversion fails
+        // Fallback to PNG if specific format fails
+        try {
+            resolve(canvas.toDataURL('image/png'));
+        } catch (pngError) {
+            console.error("Fallback to PNG also failed:", pngError);
+            reject(pngError); // Reject if PNG conversion also fails
+        }
     }
   });
 };
+
 
 // Helper function to read file as Data URL
 const readFileAsDataURL = (file: File): Promise<string> => {
@@ -135,11 +149,70 @@ const readFileAsDataURL = (file: File): Promise<string> => {
     });
 };
 
+// Function to create a low-resolution preview
+const createLowResPreview = (
+    img: HTMLImageElement,
+    maxDimension: number = 800 // Max width/height for preview
+): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const canvas = document.createElement('canvas');
+        let { naturalWidth: width, naturalHeight: height } = img;
+
+        if (width > height) {
+            if (width > maxDimension) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+            }
+        } else {
+            if (height > maxDimension) {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+            }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+            reject(new Error('Could not get canvas context for preview'));
+            return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        try {
+            // Use WebP for preview if possible, fallback to JPEG, then PNG
+            const webpUrl = canvas.toDataURL('image/webp', 0.8); // Lower quality for preview
+            if (webpUrl.length > 10) { // Basic check for successful conversion
+                 resolve(webpUrl);
+            } else {
+                 const jpegUrl = canvas.toDataURL('image/jpeg', 0.8);
+                 if (jpegUrl.length > 10) {
+                     resolve(jpegUrl);
+                 } else {
+                     resolve(canvas.toDataURL('image/png')); // Fallback to PNG
+                 }
+            }
+        } catch (e) {
+            console.error("Error creating low-res preview:", e);
+             try {
+                resolve(canvas.toDataURL('image/png')); // Final fallback to PNG
+             } catch(pngError){
+                 reject(pngError);
+             }
+        }
+    });
+};
+
+
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [filteredUrl, setFilteredUrl] = useState<string | null>(null);
+  const [originalDataUrl, setOriginalDataUrl] = useState<string | null>(null); // Store original full-res data URL
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null); // This will hold the low-res preview
+  const [filteredUrl, setFilteredUrl] = useState<string | null>(null); // Holds full-res filtered image
+  const [filteredPreviewUrl, setFilteredPreviewUrl] = useState<string | null>(null); // Optional: low-res filtered preview
   const [analogStyle, setAnalogStyle] = useState<string>('Kodak Portra 400');
   const [sceneCategory, setSceneCategory] = useState<string>('landscape');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -147,42 +220,97 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false); // State for modal visibility
   const [isModalImageLoading, setIsModalImageLoading] = useState<boolean>(true); // State for modal image loading
   const [modalImageError, setModalImageError] = useState<boolean>(false); // State for modal image error
+  const [currentMimeType, setCurrentMimeType] = useState<string>('image/png'); // Store the original mime type
+
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    // Clean up object URLs when component unmounts or file changes
+    // Clean up object URLs if they exist (Blob URLs)
+    // Data URLs don't need explicit cleanup like Blob URLs
     return () => {
-      if (previewUrl && previewUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(previewUrl);
-      }
-      // No need to revoke filteredUrl as it's a data URL
+       // No explicit cleanup needed for data URLs stored in state
+       // If blob URLs were used, they would be revoked here:
+       // if (previewUrl && previewUrl.startsWith('blob:')) { URL.revokeObjectURL(previewUrl); }
     };
-  }, [previewUrl]);
+  }, []); // Run only on mount/unmount
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
        if (!file.type.startsWith('image/')) {
             toast({
                 title: "Invalid File Type",
-                description: "Please select an image file.",
+                description: "Please select an image file (JPEG, PNG, WEBP, etc.).",
                 variant: "destructive",
             });
             return;
         }
 
-      setSelectedFile(file);
-      // Revoke previous blob URL if it exists
-      if (previewUrl && previewUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(previewUrl);
+      setIsLoading(true); // Show loading indicator
+      setProgress(5); // Initial progress
+
+      try {
+          const dataUrl = await readFileAsDataURL(file);
+          setOriginalDataUrl(dataUrl); // Store the full-res original
+          setCurrentMimeType(file.type); // Store mime type
+          setProgress(15);
+
+          const img = new window.Image();
+          img.onload = async () => {
+              try {
+                  const lowRes = await createLowResPreview(img);
+                  setPreviewUrl(lowRes); // Set the low-res preview
+                  setSelectedFile(file);
+                  setFilteredUrl(null); // Reset filtered images
+                  setFilteredPreviewUrl(null);
+                  setProgress(100);
+                   toast({ title: "Image Loaded", description: "Preview generated successfully." });
+              } catch (previewError: any) {
+                   console.error("Error generating preview:", previewError);
+                   // If preview fails, still try to load the original full res as preview
+                   setPreviewUrl(dataUrl);
+                   setSelectedFile(file);
+                   setFilteredUrl(null);
+                   setFilteredPreviewUrl(null);
+                   setProgress(100);
+                   toast({ title: "Preview Error", description: "Could not generate low-res preview, using original.", variant: "default"});
+              } finally {
+                  setIsLoading(false);
+                  setTimeout(() => setProgress(0), 1000);
+              }
+          };
+          img.onerror = (errorEvent) => {
+              console.error('Error loading image data:', errorEvent);
+              toast({
+                  title: "Image Load Error",
+                  description: "Could not load image data. File might be corrupt or unsupported.",
+                  variant: "destructive",
+              });
+              // Reset states
+              setOriginalDataUrl(null);
+              setPreviewUrl(null);
+              setSelectedFile(null);
+              setFilteredUrl(null);
+              setFilteredPreviewUrl(null);
+              setIsLoading(false);
+              setProgress(0);
+          }
+          img.src = dataUrl; // Start loading image
+          setProgress(25); // Progress update
+
+      } catch (readError: any) {
+          console.error("Error reading file:", readError);
+          toast({
+              title: "File Read Error",
+              description: `Could not read the file: ${readError.message || 'Unknown error'}.`,
+              variant: "destructive",
+          });
+          setIsLoading(false);
+          setProgress(0);
       }
 
-      const newPreviewUrl = URL.createObjectURL(file);
-      setPreviewUrl(newPreviewUrl);
-      setFilteredUrl(null); // Reset filtered image when new file is selected
-      setProgress(0);
     }
   };
 
@@ -191,7 +319,7 @@ export default function Home() {
   };
 
   const handleApplyFilter = useCallback(async () => {
-    if (!selectedFile) {
+    if (!originalDataUrl) { // Check if the original full-res data URL is available
       toast({
         title: "Error",
         description: "Please import a photo first.",
@@ -204,18 +332,44 @@ export default function Home() {
     setProgress(10); // Initial progress
 
     try {
-       const dataUrl = await readFileAsDataURL(selectedFile);
-       setProgress(20); // Progress after reading file
-
+       // Use the stored originalDataUrl for filtering
        const img = new window.Image();
 
        img.onload = async () => {
            setProgress(30); // Progress after image object loaded in memory
            try {
-               const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, 'image/png');
+               // Apply filter to the full-resolution image
+               const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, currentMimeType);
                setProgress(70); // Progress after filtering
 
-               setFilteredUrl(filteredDataUri);
+               setFilteredUrl(filteredDataUri); // Store full-res filtered image
+
+               // Optionally create a low-res preview of the filtered image
+               try {
+                   const lowResFiltered = await createLowResPreview(img, 800); // Create preview from the *original* image object
+                   // Need to re-apply filter to the preview canvas
+                    const previewCanvas = document.createElement('canvas');
+                    previewCanvas.width = img.naturalWidth; // Use original dimensions for accuracy before scaling
+                    previewCanvas.height = img.naturalHeight;
+                    const previewCtx = previewCanvas.getContext('2d');
+                    if(previewCtx){
+                        const tempImg = new window.Image();
+                        tempImg.onload = async () => {
+                            const filteredLowRes = await applyClientSideFilter(tempImg, analogStyle, sceneCategory, 'image/png', 0.8); // Use lower quality for preview
+                             setFilteredPreviewUrl(filteredLowRes); // Update low-res filtered preview state
+                        }
+                        tempImg.onerror = () => setFilteredPreviewUrl(null); // fallback or handle error
+                        tempImg.src = lowResFiltered; // Load the generated low res preview into an image element
+                    } else {
+                        setFilteredPreviewUrl(null); // If context fails, no preview
+                    }
+
+               } catch (previewError) {
+                   console.warn("Could not generate filtered preview:", previewError);
+                   setFilteredPreviewUrl(null); // Fallback: no filtered preview
+               }
+
+
                toast({
                  title: "Style Applied",
                  description: `${analogStyle} style applied for ${sceneCategory} scene.`,
@@ -247,25 +401,25 @@ export default function Home() {
             setProgress(0); // Reset progress on error
        }
 
-       // Start loading the image data into the Image object
-       img.src = dataUrl;
+       // Start loading the original full-res image data into the Image object
+       img.src = originalDataUrl;
        setProgress(25); // Progress update while image decodes
 
-    } catch (error: any) {
-      console.error('Error reading file for filtering:', error);
+    } catch (error: any) { // Catch errors related to the overall process initiation
+      console.error('Error preparing for filtering:', error);
       toast({
-        title: "File Read Error",
-        description: `Could not read the selected image file: ${error.message || 'Please try again.'}`,
+        title: "Processing Error",
+        description: `An unexpected error occurred: ${error.message || 'Please try again.'}`,
         variant: "destructive",
       });
       setIsLoading(false);
       setProgress(0); // Reset progress on error
     }
-  }, [selectedFile, analogStyle, sceneCategory, toast]);
+  }, [originalDataUrl, analogStyle, sceneCategory, toast, currentMimeType]);
 
 
   const handleExport = () => {
-    if (!filteredUrl) {
+    if (!filteredUrl) { // Export the full-res filtered image
       toast({
         title: "Error",
         description: "No edited photo to export.",
@@ -294,29 +448,35 @@ export default function Home() {
   };
 
   const handleImageClick = () => {
+    // Always open the full-res filtered image in the modal if available
     if (filteredUrl) {
         setIsModalImageLoading(true); // Reset loading state each time modal opens
         setModalImageError(false); // Reset error state
         setIsModalOpen(true);
-    } else if (previewUrl) {
-        // Optionally open original in modal too
-        // setIsModalImageLoading(true); // Reset loading state
-        // setModalImageError(false);
-        // setIsModalOpen(true); // If you want to view original large
+    } else if (previewUrl) { // If no filtered image, show the original preview (which is low-res)
         toast({
             title: "Preview",
-            description: "This is the original image. Apply a style first to view the edited version.",
+            description: "This is the original image preview. Apply a style first to view the edited version.",
             variant: "default",
         });
+        // Optionally, allow viewing the full-res original in the modal
+        // if (originalDataUrl) {
+        //     setIsModalImageLoading(true);
+        //     setModalImageError(false);
+        //     // Temp set filteredUrl to original for modal display? Or add another state?
+        //     // For simplicity, just showing a toast might be better unless specifically requested.
+        //     setIsModalOpen(true); // If you want to view original large
+        // }
     }
   }
+
 
   const handleModalOpenChange = (open: boolean) => {
       setIsModalOpen(open);
       if (!open) {
-          // Optional: Clean up states when modal closes if needed
-          // setIsModalImageLoading(true);
-          // setModalImageError(false);
+          // Reset modal-specific states when it closes
+          setIsModalImageLoading(true);
+          setModalImageError(false);
       }
   }
 
@@ -329,9 +489,16 @@ export default function Home() {
 
   const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food', 'general'];
 
+  // Determine which URL to display in the main preview area
+  // Prioritize: Filtered Preview > Filtered Full > Original Preview > Original Full (fallback)
+  const displayUrl = filteredPreviewUrl || filteredUrl || previewUrl || originalDataUrl;
+  const displayAlt = filteredUrl ? `Photo with ${analogStyle} filter applied` : (previewUrl ? "Original Photo Preview" : "Import a photo");
+
+
+  // JSX Return
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary flex flex-col items-center justify-center p-4 md:p-8">
-      <Card className="w-full max-w-4xl shadow-xl overflow-hidden">
+      <Card className="w-full max-w-6xl shadow-xl overflow-hidden"> {/* Increased max-w */}
         <CardHeader className="bg-card border-b p-4 md:p-6">
           <CardTitle className="text-2xl md:text-3xl font-bold tracking-tight text-center text-primary">
             AnalogLens ✨
@@ -340,15 +507,16 @@ export default function Home() {
             Apply classic analog film styles to your photos instantly.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-4 md:p-8 grid md:grid-cols-2 gap-6 md:gap-8 items-start">
-          {/* Left Column: Controls */}
-          <div className="space-y-6">
+        {/* Adjusted grid columns: controls take less space (e.g., 1/3), preview takes more (e.g., 2/3) */}
+        <CardContent className="p-4 md:p-8 grid md:grid-cols-3 gap-6 md:gap-8 items-start">
+          {/* Left Column: Controls (takes 1 part) */}
+          <div className="md:col-span-1 space-y-4 md:space-y-5"> {/* Reduced vertical spacing slightly */}
             {/* Import */}
-            <div className="space-y-2">
-              <Label htmlFor="photo-upload" className="text-sm font-medium">1. Import Photo</Label>
-              <Button onClick={handleImportClick} variant="outline" className="w-full justify-center">
-                <Upload className="mr-2 h-4 w-4" />
-                {selectedFile ? `Selected: ${selectedFile.name.substring(0, 20)}...` : 'Choose a Photo'}
+            <div className="space-y-1.5"> {/* Reduced space inside control group */}
+              <Label htmlFor="photo-upload" className="text-xs md:text-sm font-medium">1. Import Photo</Label>
+              <Button onClick={handleImportClick} variant="outline" size="sm" className="w-full justify-center text-xs md:text-sm"> {/* Smaller button */}
+                <Upload className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" /> {/* Smaller icon */}
+                {selectedFile ? `Selected: ${selectedFile.name.substring(0, 15)}...` : 'Choose Photo'}
               </Button>
               <Input
                 id="photo-upload"
@@ -359,53 +527,54 @@ export default function Home() {
                 className="hidden"
               />
                {previewUrl && !filteredUrl && (
-                 <p className="text-xs text-muted-foreground text-center">Original photo loaded.</p>
+                 <p className="text-xs text-muted-foreground text-center">Original loaded.</p>
                )}
             </div>
 
             {/* Style Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="analog-style" className="text-sm font-medium">2. Select Analog Style</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="analog-style" className="text-xs md:text-sm font-medium">2. Select Style</Label>
               <Select value={analogStyle} onValueChange={setAnalogStyle}>
-                <SelectTrigger id="analog-style" className="w-full">
+                <SelectTrigger id="analog-style" className="w-full h-9 text-xs md:text-sm"> {/* Smaller trigger */}
                   <SelectValue placeholder="Choose a style" />
                 </SelectTrigger>
                 <SelectContent>
                   {analogStyles.map(style => (
-                     <SelectItem key={style} value={style}>{style}</SelectItem>
+                     <SelectItem key={style} value={style} className="text-xs md:text-sm">{style}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
             {/* Scene Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="scene-category" className="text-sm font-medium">3. Select Scene Context</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="scene-category" className="text-xs md:text-sm font-medium">3. Select Context</Label>
               <Select value={sceneCategory} onValueChange={setSceneCategory}>
-                <SelectTrigger id="scene-category" className="w-full">
-                  <SelectValue placeholder="Choose a scene context" />
+                <SelectTrigger id="scene-category" className="w-full h-9 text-xs md:text-sm"> {/* Smaller trigger */}
+                  <SelectValue placeholder="Choose context" />
                 </SelectTrigger>
                 <SelectContent>
                    {sceneCategories.map(scene => (
-                     <SelectItem key={scene} value={scene} className="capitalize">{scene}</SelectItem>
+                     <SelectItem key={scene} value={scene} className="capitalize text-xs md:text-sm">{scene}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-               <p className="text-xs text-muted-foreground">Helps fine-tune the selected style.</p>
+               <p className="text-xs text-muted-foreground">Fine-tunes the style.</p>
             </div>
 
             {/* Apply Filter Button */}
-             <div className="space-y-2">
-                <Label className="text-sm font-medium">4. Apply Style</Label>
+             <div className="space-y-1.5">
+                <Label className="text-xs md:text-sm font-medium">4. Apply Style</Label>
                  <Button
                     onClick={handleApplyFilter}
-                    disabled={!selectedFile || isLoading}
-                    className="w-full bg-primary hover:bg-primary/90"
+                    disabled={!originalDataUrl || isLoading} // Disable if no original data
+                    size="sm" // Smaller button
+                    className="w-full bg-primary hover:bg-primary/90 text-xs md:text-sm"
                 >
                     {isLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4 animate-spin" />
                     ) : (
-                     <Paintbrush className="mr-2 h-4 w-4" />
+                     <Paintbrush className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" />
                     )}
                     {isLoading ? 'Applying...' : 'Apply Style'}
                 </Button>
@@ -414,76 +583,72 @@ export default function Home() {
             {/* Progress Bar */}
              {isLoading && (
                 <div className="space-y-1">
-                    <Progress value={progress} className="w-full h-2" />
-                    <p className="text-xs text-muted-foreground text-center">Processing... {progress}%</p>
+                    <Progress value={progress} className="w-full h-1.5 md:h-2" /> {/* Slightly thinner bar */}
+                    <p className="text-xs text-muted-foreground text-center">{progress}%</p>
                 </div>
              )}
 
-          </div>
-
-          {/* Right Column: Image Preview */}
-          <div className="space-y-4">
-             <Label className="text-sm font-medium block text-center">Preview</Label>
-             <div
-                className="aspect-video w-full bg-muted rounded-lg overflow-hidden border flex items-center justify-center relative shadow-inner cursor-pointer group" // Added cursor-pointer and group
-                onClick={handleImageClick} // Add click handler to the container
-              >
-                {/* Display filtered first, then preview, then placeholder */}
-                {filteredUrl ? (
-                  <>
-                    <Image
-                      src={filteredUrl}
-                      alt={`Photo with ${analogStyle} filter applied`}
-                      layout="fill"
-                      objectFit="contain"
-                      data-ai-hint="filtered image"
-                      className="animate-fade-in"
-                      unoptimized // Crucial for Data URLs
-                    />
-                    {/* Zoom icon overlay */}
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                         <ZoomIn className="h-10 w-10 text-white" />
-                    </div>
-                  </>
-                ) : previewUrl ? (
-                   <>
-                    <Image
-                        src={previewUrl}
-                        alt="Original Photo Preview"
-                        layout="fill"
-                        objectFit="contain"
-                        data-ai-hint="original image"
-                    />
-                    {/* Optional: Hint to apply style */}
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <p className="text-white text-sm">Apply a style to zoom</p>
-                    </div>
-                   </>
-                ) : (
-                  <div className="text-muted-foreground p-8 text-center">
-                    <Upload className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                    Import a photo to start editing
-                  </div>
-                )}
-                 {isLoading && (
-                  <div className="absolute inset-0 bg-background/70 flex items-center justify-center backdrop-blur-sm">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  </div>
-                )}
-             </div>
-
+            {/* Export Button (moved to controls column) */}
             {filteredUrl && (
-                 <Button onClick={handleExport} variant="default" className="w-full">
-                    <Download className="mr-2 h-4 w-4" /> Export Edited Photo
+                 <Button onClick={handleExport} variant="default" size="sm" className="w-full text-xs md:text-sm">
+                    <Download className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" /> Export Edited
                  </Button>
             )}
              {!filteredUrl && previewUrl && (
-                 <p className="text-xs text-muted-foreground text-center">Select a style and apply it!</p>
+                 <p className="text-xs text-muted-foreground text-center pt-2">Apply a style to enable export.</p>
             )}
+
+          </div>
+
+          {/* Right Column: Image Preview (takes 2 parts) */}
+          <div className="md:col-span-2 space-y-3 md:space-y-4"> {/* Slightly reduced spacing */}
+             <Label className="text-sm font-medium block text-center">Preview</Label>
+             <div
+                // Increased aspect ratio for a larger preview area
+                className="aspect-w-16 aspect-h-10 w-full bg-muted rounded-lg overflow-hidden border flex items-center justify-center relative shadow-inner cursor-pointer group"
+                onClick={handleImageClick} // Add click handler to the container
+              >
+                {displayUrl ? (
+                  <>
+                    <Image
+                      src={displayUrl} // Use the determined display URL
+                      alt={displayAlt} // Use the determined alt text
+                      layout="fill"
+                      objectFit="contain"
+                      data-ai-hint={filteredUrl ? "filtered preview" : "original preview"}
+                      className={cn(
+                          {"animate-fade-in": !!filteredUrl} // Fade in only when filtered image is shown
+                      )}
+                      unoptimized // Use unoptimized for data URLs and frequent changes
+                      priority={!filteredUrl} // Prioritize loading the initial original preview
+                    />
+                    {/* Zoom icon overlay - appears on hover over the preview container */}
+                    {(filteredUrl || originalDataUrl) && ( // Show zoom if there's something to zoom into (filtered or original full-res)
+                         <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                             <ZoomIn className="h-10 w-10 text-white" />
+                         </div>
+                    )}
+                  </>
+                ) : (
+                  // Placeholder when no image is loaded
+                  <div className="text-muted-foreground p-8 text-center">
+                    <Upload className="mx-auto h-10 w-10 md:h-12 md:w-12 mb-3 md:mb-4 opacity-50" /> {/* Slightly smaller icon */}
+                    Import a photo to start
+                  </div>
+                )}
+                 {/* Loading overlay */}
+                 {isLoading && (
+                  <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center backdrop-blur-sm space-y-2">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Processing...</p>
+                       <Progress value={progress} className="w-3/4 max-w-xs h-1.5 md:h-2" />
+                  </div>
+                )}
+             </div>
           </div>
 
         </CardContent>
-         <CardFooter className="border-t bg-card p-4 text-center text-xs text-muted-foreground">
+         <CardFooter className="border-t bg-card p-3 md:p-4 text-center text-xs text-muted-foreground">
            Client-side Filtering | AnalogLens &copy; {new Date().getFullYear()}
          </CardFooter>
       </Card>
@@ -491,12 +656,14 @@ export default function Home() {
 
       {/* Modal Dialog for Full View */}
        <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
-         <DialogContent className="max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[60vw] p-0 border-0 bg-transparent shadow-none flex items-center justify-center min-h-[50vh]">
+         {/* Content sized based on viewport, padding removed, background transparent */}
+         <DialogContent className="max-w-[95vw] sm:max-w-[90vw] md:max-w-[85vw] lg:max-w-[80vw] xl:max-w-[75vw] p-0 border-0 bg-transparent shadow-none flex items-center justify-center min-h-[60vh]">
             <DialogHeader className="hidden"> {/* Visually hidden header for accessibility */}
-             <DialogTitle>Filtered Image Preview</DialogTitle>
+             <DialogTitle>Full Size Image Preview</DialogTitle>
            </DialogHeader>
+           {/* Check filteredUrl (which holds the full-res filtered image) */}
            {filteredUrl && (
-             <div className="relative w-full h-auto aspect-[4/3] md:aspect-video"> {/* Adjust aspect ratio as needed */}
+             <div className="relative w-full h-auto max-h-[85vh] aspect-[auto]"> {/* Adjust max height and aspect ratio */}
                  {/* Loading indicator */}
                  {isModalImageLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
@@ -505,14 +672,14 @@ export default function Home() {
                  )}
                  {/* Error message */}
                  {modalImageError && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-destructive/20 text-destructive-foreground z-10">
-                       <p>Error loading image.</p>
+                    <div className="absolute inset-0 flex items-center justify-center bg-destructive/20 text-destructive-foreground z-10 p-4">
+                       <p className="text-center">Error loading full-size image.</p>
                     </div>
                  )}
                  {/* The Image component */}
                  <Image
-                   src={filteredUrl}
-                   alt={`Filtered photo - ${analogStyle}`}
+                   src={filteredUrl} // Display the full-res filtered image here
+                   alt={`Filtered photo - ${analogStyle} - Full size`}
                    layout="fill"
                    objectFit="contain"
                    data-ai-hint="zoomed filtered image"
@@ -521,7 +688,7 @@ export default function Home() {
                        "rounded-lg transition-opacity duration-300", // Optional styling
                        isModalImageLoading || modalImageError ? "opacity-0" : "opacity-100" // Hide image while loading or on error
                    )}
-                   onLoadingComplete={() => setIsModalImageLoading(false)}
+                   onLoad={() => setIsModalImageLoading(false)} // Use onLoad instead of onLoadingComplete for better compatibility maybe?
                    onError={() => {
                        setIsModalImageLoading(false);
                        setModalImageError(true);
@@ -534,7 +701,7 @@ export default function Home() {
                  />
              </div>
            )}
-           {/* Close button is automatically handled by ShadCN Dialog */}
+           {/* Implicit close button handled by DialogContent's internal X */}
          </DialogContent>
        </Dialog>
     </div>
