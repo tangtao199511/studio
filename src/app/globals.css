@@ -88,7 +88,8 @@ body {
   }
 }
 
-/* Add keyframes and animation class if they don't exist */
+/* Removed fade-in animation as it's no longer used */
+/*
 @layer utilities {
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -98,3 +99,5 @@ body {
     animation: fadeIn 0.5s ease-in-out;
   }
 }
+*/
+    

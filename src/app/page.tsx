@@ -640,9 +640,10 @@ export default function Home() {
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 800px" // Add sizes prop
                       style={{ objectFit: 'contain' }} // Use style for objectFit with fill
                       data-ai-hint={showOriginalPreview ? "original preview" : (filteredUrl ? "filtered preview" : "original preview")}
-                      className={cn(
-                           {"animate-fade-in": !!filteredUrl && !showOriginalPreview} // Fade in only when filtered image is shown and not previewing original
-                      )}
+                      // Removed animation class to prevent blinking on state change
+                      // className={cn(
+                      //      {"animate-fade-in": !!filteredUrl && !showOriginalPreview}
+                      // )}
                       unoptimized // Use unoptimized for data URLs and frequent changes
                       priority={!filteredUrl} // Prioritize loading the initial original preview
                     />
@@ -751,4 +752,4 @@ export default function Home() {
   }
 }
 */
-
+    
