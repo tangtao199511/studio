@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 body {
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif; /* Use Inter font variable */
   /* Add a subtle background pattern */
   position: relative;
   overflow-x: hidden; /* Prevent horizontal scrollbar from pattern */
@@ -106,16 +106,3 @@ body::before {
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
-
-/* Removed fade-in animation as it's no longer used */
-/*
-@layer utilities {
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-in-out;
-  }
-}
-*/
