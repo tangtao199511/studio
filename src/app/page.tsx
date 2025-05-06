@@ -1,9 +1,8 @@
-
 // src/app/page.tsx
 'use client';
 
 import type { ChangeEvent } from 'react';
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'; // Added useMemo, useEffect
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import {
@@ -64,6 +63,10 @@ const applyClientSideFilter = (
       'Vintage Sepia Tone': { sepia: 0.7, contrast: 1.05, brightness: 0.95 }, // New (strong sepia)
       'Cool Cinematic Look': { contrast: 1.1, brightness: 0.95, 'hue-rotate': -10, saturate: 1.1 }, // New (slight adjustment from CineStill)
       'Warm Golden Hour LUT': { sepia: 0.25, contrast: 1.05, brightness: 1.1, saturate: 1.1 }, // New
+      'High Contrast B&W': { grayscale: 1, contrast: 1.5, brightness: 1.0 }, // New B&W
+      'Faded Vintage Film': { saturate: 0.8, contrast: 0.9, brightness: 1.1, sepia: 0.2 }, // New Faded
+      'Vibrant Summer Day': { saturate: 1.3, brightness: 1.05, contrast: 1.05 }, // New Vibrant
+      'Cross Processed Look': { saturate: 1.2, contrast: 1.1, 'hue-rotate': 15, brightness: 0.95 }, // New Cross Processed
       'None': {}, // Added None option
     };
 
@@ -281,6 +284,20 @@ export default function Home() {
   const [currentMimeType, setCurrentMimeType] = useState<string>('image/png'); // Store the original mime type
   const [showOriginalPreview, setShowOriginalPreview] = useState<boolean>(false); // State for preview toggle
 
+  // Use refs for values needed inside debounced function to ensure latest value is used
+  const intensityRef = useRef(filterIntensity);
+  const analogStyleRef = useRef(analogStyle);
+  const sceneCategoryRef = useRef(sceneCategory);
+  const originalDataUrlRef = useRef(originalDataUrl);
+  const currentMimeTypeRef = useRef(currentMimeType);
+
+  // Update refs whenever the corresponding state changes
+  useEffect(() => { intensityRef.current = filterIntensity; }, [filterIntensity]);
+  useEffect(() => { analogStyleRef.current = analogStyle; }, [analogStyle]);
+  useEffect(() => { sceneCategoryRef.current = sceneCategory; }, [sceneCategory]);
+  useEffect(() => { originalDataUrlRef.current = originalDataUrl; }, [originalDataUrl]);
+  useEffect(() => { currentMimeTypeRef.current = currentMimeType; }, [currentMimeType]);
+
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -327,7 +344,7 @@ export default function Home() {
                   setProgress(100);
                    toast({ title: "Image Loaded", description: "Preview generated successfully." });
                    // Automatically apply the default filter once the image is loaded
-                   handleApplyFilter(dataUrl, analogStyle, sceneCategory, filterIntensity, file.type);
+                   handleApplyFilter(dataUrl, analogStyleRef.current, sceneCategoryRef.current, intensityRef.current, file.type);
               } catch (previewError: any) {
                    console.error("Error generating preview:", previewError);
                    // If preview fails, still try to load the original full res as preview
@@ -338,7 +355,7 @@ export default function Home() {
                    setProgress(100);
                    toast({ title: "Preview Error", description: "Could not generate low-res preview, using original.", variant: "default"});
                     // Automatically apply the default filter even if preview fails
-                   handleApplyFilter(dataUrl, analogStyle, sceneCategory, filterIntensity, file.type);
+                   handleApplyFilter(dataUrl, analogStyleRef.current, sceneCategoryRef.current, intensityRef.current, file.type);
               } finally {
                   setIsLoading(false);
                   setTimeout(() => setProgress(0), 1000);
@@ -383,23 +400,27 @@ export default function Home() {
 
   // Updated handleApplyFilter to accept parameters directly
   const handleApplyFilter = useCallback(async (
-     sourceUrl: string | null = originalDataUrl, // Default to state if not passed
-     style: string = analogStyle,
-     scene: string = sceneCategory,
-     intensity: number = filterIntensity,
-     mimeType: string = currentMimeType
+     sourceUrl: string | null = originalDataUrlRef.current, // Use ref
+     style: string = analogStyleRef.current, // Use ref
+     scene: string = sceneCategoryRef.current, // Use ref
+     intensity: number = intensityRef.current, // Use ref
+     mimeType: string = currentMimeTypeRef.current // Use ref
      ) => {
     if (!sourceUrl) { // Check if the source URL (original or passed) is available
-      toast({
-        title: "Error",
-        description: "Please import a photo first.",
-        variant: "destructive",
-      });
+      // Don't toast if called automatically on load before user interaction
+      // toast({
+      //   title: "Error",
+      //   description: "Please import a photo first.",
+      //   variant: "destructive",
+      // });
       return;
     }
 
     setIsLoading(true);
     setProgress(10); // Initial progress
+
+    // Use local variable to store the initial filteredUrl state for toast logic
+    const wasAlreadyFiltered = filteredUrl !== null;
 
     try {
        // Use the provided sourceUrl for filtering
@@ -434,9 +455,7 @@ export default function Home() {
                filteredImgForPreview.src = filteredDataUri; // Load the generated full-res filtered image
 
                // Only show toast if it wasn't triggered by the initial auto-apply
-               // We can check if filteredUrl was null before this call
-               // Or add a flag/parameter if needed for more complex scenarios
-               if (filteredUrl !== null) { // Simple check: only toast on subsequent manual applies
+               if (wasAlreadyFiltered) { // Only toast on subsequent manual applies or debounced updates
                  toast({
                    title: "Style Updated",
                    description: `${style} style applied at ${intensity}% intensity.`, // Updated toast message
@@ -483,23 +502,33 @@ export default function Home() {
       setIsLoading(false);
       setProgress(0); // Reset progress on error
     }
-  // Removed dependency array elements that are now passed as arguments
-  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress, originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType, filteredUrl]); // Added filteredUrl to dependency
+  // Ensure all dependencies are correctly listed, focusing on state setters and toast
+  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress, filteredUrl]); // Remove state values from deps, rely on refs inside
 
 
   // Debounced filter application when slider changes
-  // Wrapped handleApplyFilter call to pass current state values
-  const debouncedApplyFilter = useCallback(
-    debounce(() => {
-      handleApplyFilter(originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType);
-    }, 500), // Increased debounce delay to 500ms
-    [handleApplyFilter, originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType] // Include all dependencies used in the debounced call
+  // Use useMemo to create the debounced function only once
+  const debouncedApplyFilter = useMemo(
+    () => debounce(() => {
+        // Read the latest values from refs when the debounced function actually executes
+        handleApplyFilter(
+            originalDataUrlRef.current,
+            analogStyleRef.current,
+            sceneCategoryRef.current,
+            intensityRef.current,
+            currentMimeTypeRef.current
+        );
+    }, 500), // Keep debounce delay
+    [handleApplyFilter] // handleApplyFilter itself depends on setters and toast, which are stable
   );
 
   const handleIntensityChange = (value: number[]) => {
-      setFilterIntensity(value[0]);
-      if (originalDataUrl) { // Only apply if an image is loaded
-          debouncedApplyFilter(); // Use debounced version for smoother UX
+      const newIntensity = value[0];
+      setFilterIntensity(newIntensity); // Update state immediately for the slider UI
+      // Update the ref immediately as well
+      intensityRef.current = newIntensity;
+      if (originalDataUrlRef.current) { // Check ref for original URL
+          debouncedApplyFilter(); // Call the debounced function
       }
   };
 
@@ -520,9 +549,9 @@ export default function Home() {
     // Determine extension based on MIME type (default to png)
     const mimeType = filteredUrl.split(';')[0].split(':')[1] || 'image/png';
     const extension = mimeType.split('/')[1] || 'png';
-    const safeStyleName = analogStyle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const safeStyleName = analogStyleRef.current.replace(/[^a-z0-9]/gi, '_').toLowerCase(); // Use ref
 
-    link.download = `AnalogLens_${safeStyleName}_${sceneCategory}_${filterIntensity}pct_${Date.now()}.${extension}`; // Include intensity in filename
+    link.download = `AnalogLens_${safeStyleName}_${sceneCategoryRef.current}_${intensityRef.current}pct_${Date.now()}.${extension}`; // Use refs
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -581,7 +610,8 @@ export default function Home() {
     'Kodak Portra 400', 'Fujifilm Velvia 50', 'Ilford HP5 Plus 400',
     'CineStill 800T', 'Agfa Vista 200', 'Lomography Color Negative 400',
     'Classic Teal & Orange LUT', 'Vintage Sepia Tone', 'Cool Cinematic Look',
-    'Warm Golden Hour LUT', 'None' // Added None
+    'Warm Golden Hour LUT', 'High Contrast B&W', 'Faded Vintage Film',
+    'Vibrant Summer Day', 'Cross Processed Look', 'None' // Added None
   ];
 
   const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food', 'general'];
@@ -626,7 +656,7 @@ export default function Home() {
                {previewUrl && !filteredUrl && (
                  <p className="text-xs text-muted-foreground text-center">Original loaded. Applying default style...</p>
                )}
-                {filteredUrl && (
+                {filteredUrl && !isLoading && ( // Only show if not currently loading
                  <p className="text-xs text-muted-foreground text-center">Style applied.</p>
                )}
             </div>
@@ -638,7 +668,8 @@ export default function Home() {
                  value={analogStyle}
                  onValueChange={(value) => {
                     setAnalogStyle(value);
-                    if (originalDataUrl) handleApplyFilter(originalDataUrl, value, sceneCategory, filterIntensity, currentMimeType);
+                    // Re-apply filter immediately when style changes, using the current intensity from state
+                    if (originalDataUrlRef.current) handleApplyFilter(originalDataUrlRef.current, value, sceneCategoryRef.current, intensityRef.current, currentMimeTypeRef.current);
                   }}
                   disabled={!originalDataUrl || isLoading} // Disable if no image or loading
                 >
@@ -660,7 +691,8 @@ export default function Home() {
                  value={sceneCategory}
                  onValueChange={(value) => {
                      setSceneCategory(value);
-                     if (originalDataUrl) handleApplyFilter(originalDataUrl, analogStyle, value, filterIntensity, currentMimeType);
+                     // Re-apply filter immediately when scene changes, using the current intensity from state
+                     if (originalDataUrlRef.current) handleApplyFilter(originalDataUrlRef.current, analogStyleRef.current, value, intensityRef.current, currentMimeTypeRef.current);
                   }}
                   disabled={!originalDataUrl || isLoading} // Disable if no image or loading
                 >
@@ -684,8 +716,8 @@ export default function Home() {
                  min={0}
                  max={100}
                  step={1}
-                 value={[filterIntensity]}
-                 onValueChange={handleIntensityChange} // Use the updated handler
+                 value={[filterIntensity]} // Controlled component based on state
+                 onValueChange={handleIntensityChange} // Use the updated handler with debounce
                  className="my-2" // Add some margin
                  disabled={!originalDataUrl || isLoading} // Disable if no image loaded or loading
                />
@@ -695,7 +727,7 @@ export default function Home() {
              <div className="space-y-1.5">
                 {/* Maybe hide this button or change its text, as filters apply on change now */}
                  <Button
-                    onClick={() => handleApplyFilter()} // Call without args to use current state
+                    onClick={() => handleApplyFilter()} // Call without args to use current REFS (or state if handleApplyFilter reads state)
                     disabled={!originalDataUrl || isLoading} // Disable if no original data or loading
                     size="sm" // Smaller button
                     variant="secondary" // Changed variant as primary action is automatic
@@ -714,7 +746,7 @@ export default function Home() {
              {isLoading && (
                 <div className="space-y-1">
                     <Progress value={progress} className="w-full h-1.5 md:h-2" /> {/* Slightly thinner bar */}
-                    <p className="text-xs text-muted-foreground text-center">{progress}%</p>
+                    <p className="text-xs text-muted-foreground text-center">{progress > 0 ? `${progress}%` : ''}</p> {/* Show % only when > 0 */}
                 </div>
              )}
 
@@ -741,12 +773,12 @@ export default function Home() {
                     <Download className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" /> Export Edited
                  </Button>
             )}
-             {!filteredUrl && previewUrl && (
-                 <p className="text-xs text-muted-foreground text-center pt-2">Style applied. Export enabled.</p>
-            )}
+             {!filteredUrl && previewUrl && !isLoading && ( // Show if preview exists, not filtered yet, and not loading
+                 <p className="text-xs text-muted-foreground text-center pt-2">Style applied. Export will be enabled.</p>
+             )}
              {!previewUrl && (
                  <p className="text-xs text-muted-foreground text-center pt-2">Import an image to begin.</p>
-            )}
+             )}
 
           </div>
 
@@ -866,15 +898,4 @@ export default function Home() {
 
 
 // Make sure globals.css includes:
-/*
-@layer utilities {
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-in-out;
-  }
-}
-*/
-    
+/* Removed fade-in animation */
