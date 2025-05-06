@@ -1,3 +1,4 @@
+
 // src/app/page.tsx
 'use client';
 
@@ -23,7 +24,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTrigger, DialogClose, DialogHeader, DialogTitle } from "@/components/ui/dialog"; // Import Dialog components
-import { Loader2, Upload, Download, Paintbrush, ZoomIn, X } from 'lucide-react';
+import { Loader2, Upload, Download, Paintbrush, ZoomIn, X, Eye, EyeOff } from 'lucide-react'; // Added Eye, EyeOff
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
@@ -221,6 +222,7 @@ export default function Home() {
   const [isModalImageLoading, setIsModalImageLoading] = useState<boolean>(true); // State for modal image loading
   const [modalImageError, setModalImageError] = useState<boolean>(false); // State for modal image error
   const [currentMimeType, setCurrentMimeType] = useState<string>('image/png'); // Store the original mime type
+  const [showOriginalPreview, setShowOriginalPreview] = useState<boolean>(false); // State for preview toggle
 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -344,30 +346,23 @@ export default function Home() {
 
                setFilteredUrl(filteredDataUri); // Store full-res filtered image
 
-               // Optionally create a low-res preview of the filtered image
-               try {
-                   const lowResFiltered = await createLowResPreview(img, 800); // Create preview from the *original* image object
-                   // Need to re-apply filter to the preview canvas
-                    const previewCanvas = document.createElement('canvas');
-                    previewCanvas.width = img.naturalWidth; // Use original dimensions for accuracy before scaling
-                    previewCanvas.height = img.naturalHeight;
-                    const previewCtx = previewCanvas.getContext('2d');
-                    if(previewCtx){
-                        const tempImg = new window.Image();
-                        tempImg.onload = async () => {
-                            const filteredLowRes = await applyClientSideFilter(tempImg, analogStyle, sceneCategory, 'image/png', 0.8); // Use lower quality for preview
-                             setFilteredPreviewUrl(filteredLowRes); // Update low-res filtered preview state
-                        }
-                        tempImg.onerror = () => setFilteredPreviewUrl(null); // fallback or handle error
-                        tempImg.src = lowResFiltered; // Load the generated low res preview into an image element
-                    } else {
-                        setFilteredPreviewUrl(null); // If context fails, no preview
-                    }
-
-               } catch (previewError) {
-                   console.warn("Could not generate filtered preview:", previewError);
-                   setFilteredPreviewUrl(null); // Fallback: no filtered preview
-               }
+               // Generate low-res preview of the filtered image for the main display
+               // We need a new Image object for this
+               const filteredImgForPreview = new window.Image();
+               filteredImgForPreview.onload = async () => {
+                   try {
+                       const lowResFiltered = await createLowResPreview(filteredImgForPreview, 800);
+                       setFilteredPreviewUrl(lowResFiltered); // Update low-res filtered preview state
+                   } catch (previewError) {
+                       console.warn("Could not generate filtered preview:", previewError);
+                       setFilteredPreviewUrl(filteredDataUri); // Fallback to full-res filtered if preview fails
+                   }
+               };
+               filteredImgForPreview.onerror = () => {
+                  console.warn("Error loading filtered image for preview generation");
+                  setFilteredPreviewUrl(filteredDataUri); // Fallback
+               };
+               filteredImgForPreview.src = filteredDataUri; // Load the generated full-res filtered image
 
 
                toast({
@@ -394,7 +389,7 @@ export default function Home() {
             console.error('Error loading image data for filtering:', errorEvent);
             toast({
                 title: "Image Load Error",
-                description: "Could not load the image data for processing. The file might be corrupted or in an unsupported format.",
+                description: `Could not load the image data for processing: ${errorEvent instanceof ErrorEvent ? errorEvent.message : 'Unknown image load error.'}`,
                 variant: "destructive",
             });
             setIsLoading(false);
@@ -480,6 +475,17 @@ export default function Home() {
       }
   }
 
+   // Handlers for the 'Preview Original' button
+   const handlePreviewOriginalPress = () => {
+    if (filteredPreviewUrl) { // Only allow if a filtered image exists
+        setShowOriginalPreview(true);
+    }
+   };
+
+   const handlePreviewOriginalRelease = () => {
+       setShowOriginalPreview(false);
+   };
+
   const analogStyles = [
     'Kodak Portra 400', 'Fujifilm Velvia 50', 'Ilford HP5 Plus 400',
     'CineStill 800T', 'Agfa Vista 200', 'Lomography Color Negative 400',
@@ -490,9 +496,9 @@ export default function Home() {
   const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food', 'general'];
 
   // Determine which URL to display in the main preview area
-  // Prioritize: Filtered Preview > Filtered Full > Original Preview > Original Full (fallback)
-  const displayUrl = filteredPreviewUrl || filteredUrl || previewUrl || originalDataUrl;
-  const displayAlt = filteredUrl ? `Photo with ${analogStyle} filter applied` : (previewUrl ? "Original Photo Preview" : "Import a photo");
+  // Prioritize: Original Preview (if toggled) > Filtered Preview > Original Preview > Placeholder
+  const displayUrl = showOriginalPreview ? previewUrl : (filteredPreviewUrl || previewUrl);
+  const displayAlt = showOriginalPreview ? "Original Photo Preview (Hold)" : (filteredPreviewUrl ? `Photo with ${analogStyle} filter applied` : (previewUrl ? "Original Photo Preview" : "Import a photo"));
 
 
   // JSX Return
@@ -588,6 +594,23 @@ export default function Home() {
                 </div>
              )}
 
+             {/* Preview Original Button */}
+             {filteredPreviewUrl && previewUrl && (
+                 <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs md:text-sm"
+                    onMouseDown={handlePreviewOriginalPress} // Use onMouseDown for press
+                    onMouseUp={handlePreviewOriginalRelease} // Use onMouseUp for release
+                    onTouchStart={handlePreviewOriginalPress} // Add touch start
+                    onTouchEnd={handlePreviewOriginalRelease} // Add touch end
+                 >
+                    {showOriginalPreview ? <EyeOff className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" /> : <Eye className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" />}
+                    {showOriginalPreview ? 'Release for Filtered' : 'Hold to Preview Original'}
+                 </Button>
+             )}
+
+
             {/* Export Button (moved to controls column) */}
             {filteredUrl && (
                  <Button onClick={handleExport} variant="default" size="sm" className="w-full text-xs md:text-sm">
@@ -613,11 +636,12 @@ export default function Home() {
                     <Image
                       src={displayUrl} // Use the determined display URL
                       alt={displayAlt} // Use the determined alt text
-                      layout="fill"
-                      objectFit="contain"
-                      data-ai-hint={filteredUrl ? "filtered preview" : "original preview"}
+                      fill // Changed layout to fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 800px" // Add sizes prop
+                      style={{ objectFit: 'contain' }} // Use style for objectFit with fill
+                      data-ai-hint={showOriginalPreview ? "original preview" : (filteredUrl ? "filtered preview" : "original preview")}
                       className={cn(
-                          {"animate-fade-in": !!filteredUrl} // Fade in only when filtered image is shown
+                           {"animate-fade-in": !!filteredUrl && !showOriginalPreview} // Fade in only when filtered image is shown and not previewing original
                       )}
                       unoptimized // Use unoptimized for data URLs and frequent changes
                       priority={!filteredUrl} // Prioritize loading the initial original preview
@@ -658,12 +682,12 @@ export default function Home() {
        <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
          {/* Content sized based on viewport, padding removed, background transparent */}
          <DialogContent className="max-w-[95vw] sm:max-w-[90vw] md:max-w-[85vw] lg:max-w-[80vw] xl:max-w-[75vw] p-0 border-0 bg-transparent shadow-none flex items-center justify-center min-h-[60vh]">
-            <DialogHeader className="hidden"> {/* Visually hidden header for accessibility */}
+            <DialogHeader className="absolute -top-96 left-0"> {/* Visually hidden header for accessibility */}
              <DialogTitle>Full Size Image Preview</DialogTitle>
            </DialogHeader>
            {/* Check filteredUrl (which holds the full-res filtered image) */}
            {filteredUrl && (
-             <div className="relative w-full h-auto max-h-[85vh] aspect-[auto]"> {/* Adjust max height and aspect ratio */}
+             <div className="relative w-full h-auto max-h-[85vh]"> {/* Removed aspect ratio */}
                  {/* Loading indicator */}
                  {isModalImageLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
@@ -680,8 +704,14 @@ export default function Home() {
                  <Image
                    src={filteredUrl} // Display the full-res filtered image here
                    alt={`Filtered photo - ${analogStyle} - Full size`}
-                   layout="fill"
-                   objectFit="contain"
+                   width={1920} // Provide estimated width
+                   height={1080} // Provide estimated height
+                   style={{ // Use style for responsive sizing and contain
+                     width: '100%',
+                     height: 'auto',
+                     maxHeight: '85vh',
+                     objectFit: 'contain'
+                   }}
                    data-ai-hint="zoomed filtered image"
                    unoptimized // Important for Data URLs
                    className={cn(
@@ -701,7 +731,7 @@ export default function Home() {
                  />
              </div>
            )}
-           {/* Implicit close button handled by DialogContent's internal X */}
+           {/* Close button provided by DialogContent */}
          </DialogContent>
        </Dialog>
     </div>
@@ -721,3 +751,4 @@ export default function Home() {
   }
 }
 */
+
