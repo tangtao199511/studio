@@ -80,36 +80,72 @@ const applyClientSideFilter = (
     let styleFilters = filters[style] || filters['None']; // Get filters for the selected style
 
     // --- Scene Adjustments (Modify styleFilters directly) ---
+    // These adjustments are applied *after* the base style filters are determined
+    // and *before* intensity is applied.
+    let sceneAdjustments: Record<string, number> = {};
     switch (scene) {
       case 'portrait':
-        styleFilters = { ...styleFilters, contrast: (styleFilters.contrast ?? defaults.contrast) * 0.95, sepia: (styleFilters.sepia ?? defaults.sepia) + 0.05 };
+        sceneAdjustments = { contrast: 0.95, sepia: 0.05 }; // Slightly soften contrast, add warmth
         break;
       case 'landscape':
-        styleFilters = { ...styleFilters, contrast: (styleFilters.contrast ?? defaults.contrast) * 1.05, saturate: (styleFilters.saturate ?? defaults.saturate) * 1.05 };
+        sceneAdjustments = { contrast: 1.05, saturate: 1.05 }; // Enhance contrast and saturation
         break;
       case 'flowers':
-        styleFilters = { ...styleFilters, saturate: (styleFilters.saturate ?? defaults.saturate) * 1.1 };
+        sceneAdjustments = { saturate: 1.1 }; // Boost saturation
         break;
       case 'street':
-        styleFilters = { ...styleFilters, contrast: (styleFilters.contrast ?? defaults.contrast) * 1.1 };
+        sceneAdjustments = { contrast: 1.1 }; // Increase contrast
         break;
       // Add other scenes if needed
+      default:
+        sceneAdjustments = {}; // No adjustment for general/other scenes
     }
+
+    // Combine base style filters with scene adjustments
+    let combinedFilters = { ...styleFilters };
+    for (const [filter, adjustmentValue] of Object.entries(sceneAdjustments)) {
+        const baseValue = combinedFilters[filter] ?? defaults[filter];
+        // For additive adjustments like sepia or hue-rotate, add the adjustment
+        if (filter === 'sepia' || filter === 'hue-rotate') {
+            combinedFilters[filter] = baseValue + adjustmentValue;
+        }
+        // For multiplicative adjustments like contrast, saturate, brightness, multiply
+        else if (filter === 'contrast' || filter === 'saturate' || filter === 'brightness' || filter === 'grayscale') {
+             combinedFilters[filter] = baseValue * adjustmentValue;
+        }
+        // Potentially handle other filter types or add new ones if needed
+    }
+
 
     // --- Apply Intensity Interpolation ---
     const intensityFactor = intensity / 100;
     let filterString = '';
-    for (const [filter, targetValue] of Object.entries(styleFilters)) {
-      const defaultValue = defaults[filter];
-      if (defaultValue !== undefined) {
-        const interpolatedValue = defaultValue + (targetValue - defaultValue) * intensityFactor;
-        if (filter === 'hue-rotate') {
-          filterString += ` ${filter}(${Math.round(interpolatedValue)}deg)`; // hue-rotate needs integer degrees
-        } else {
-          filterString += ` ${filter}(${interpolatedValue.toFixed(3)})`; // Use more precision for others
+    // Iterate through all possible filters defined in defaults
+    for (const filter of Object.keys(defaults)) {
+        const defaultValue = defaults[filter];
+        // Use the value from combinedFilters if available, otherwise use the default
+        const targetValue = combinedFilters[filter] ?? defaultValue;
+
+        // Apply intensity interpolation only if the target value is different from the default
+        if (targetValue !== defaultValue) {
+            const interpolatedValue = defaultValue + (targetValue - defaultValue) * intensityFactor;
+            if (filter === 'hue-rotate') {
+                filterString += ` ${filter}(${Math.round(interpolatedValue)}deg)`; // hue-rotate needs integer degrees
+            } else {
+                filterString += ` ${filter}(${interpolatedValue.toFixed(3)})`; // Use more precision for others
+            }
         }
-      }
+        // If target value is the same as default, but the style explicitly set it (e.g., grayscale: 1)
+        // and intensity is 100%, apply it directly. For intensity < 100%, it won't be applied if it matches default.
+        else if (styleFilters[filter] !== undefined && intensityFactor === 1) {
+             if (filter === 'hue-rotate') {
+                filterString += ` ${filter}(${Math.round(targetValue)}deg)`;
+            } else {
+                filterString += ` ${filter}(${targetValue.toFixed(3)})`;
+            }
+        }
     }
+
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -213,6 +249,19 @@ const createLowResPreview = (
     });
 };
 
+// Debounce helper function
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  return function(this: ThisParameterType<T>, ...args: Parameters<T>) {
+    const context = this;
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func.apply(context, args);
+    }, wait);
+  };
+}
 
 
 export default function Home() {
@@ -435,7 +484,7 @@ export default function Home() {
       setProgress(0); // Reset progress on error
     }
   // Removed dependency array elements that are now passed as arguments
-  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress]);
+  }, [toast, setFilteredUrl, setFilteredPreviewUrl, setIsLoading, setProgress, originalDataUrl, analogStyle, sceneCategory, filterIntensity, currentMimeType]); // Added missing dependencies
 
 
   // Debounced filter application when slider changes
@@ -815,19 +864,6 @@ export default function Home() {
 }
 
 
-// Debounce helper function
-function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  return function(this: ThisParameterType<T>, ...args: Parameters<T>) {
-    const context = this;
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => {
-      func.apply(context, args);
-    }, wait);
-  };
-}
 
 // Make sure globals.css includes:
 /*
