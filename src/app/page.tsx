@@ -4,8 +4,6 @@
 import type { ChangeEvent } from 'react';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import Image from 'next/image';
-// Removed AI imports: import {applyAnalogFilter} from '@/ai/flows/apply-analog-filter';
-// Removed AI imports: import {enhancePhotoDetails} from '@/ai/flows/enhance-photo-details';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -24,7 +22,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Loader2, Upload, Download, Paintbrush } from 'lucide-react'; // Changed Wand2 to Paintbrush
+import { Dialog, DialogContent, DialogTrigger, DialogClose } from "@/components/ui/dialog"; // Import Dialog components
+import { Loader2, Upload, Download, Paintbrush, ZoomIn, X } from 'lucide-react';
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
@@ -143,8 +142,8 @@ export default function Home() {
   const [analogStyle, setAnalogStyle] = useState<string>('Kodak Portra 400');
   const [sceneCategory, setSceneCategory] = useState<string>('landscape');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  // Removed isEnhancing state
   const [progress, setProgress] = useState<number>(0);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false); // State for modal visibility
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -155,17 +154,12 @@ export default function Home() {
       if (previewUrl && previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(previewUrl);
       }
-      // No need to revoke filteredUrl if it's a data URL
-      // if (filteredUrl && filteredUrl.startsWith('blob:')) {
-      //   URL.revokeObjectURL(filteredUrl);
-      // }
     };
-  }, [previewUrl]); // Only previewUrl is an object URL now
+  }, [previewUrl]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Basic file type check
        if (!file.type.startsWith('image/')) {
             toast({
                 title: "Invalid File Type",
@@ -176,14 +170,10 @@ export default function Home() {
         }
 
       setSelectedFile(file);
-      // Revoke previous preview URL if it exists and is an object URL
       if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
 
-      // Create new object URL for preview
       const newPreviewUrl = URL.createObjectURL(file);
       setPreviewUrl(newPreviewUrl);
-
-      // Reset filtered image and progress on new file upload
       setFilteredUrl(null);
       setProgress(0);
     }
@@ -194,7 +184,7 @@ export default function Home() {
   };
 
   const handleApplyFilter = useCallback(async () => {
-    if (!selectedFile) { // Check selectedFile directly
+    if (!selectedFile) {
       toast({
         title: "Error",
         description: "Please import a photo first.",
@@ -204,45 +194,43 @@ export default function Home() {
     }
 
     setIsLoading(true);
-    setProgress(10); // Initial progress
+    setProgress(10);
 
     try {
-        // Read the file as a Data URL for stable processing
        const dataUrl = await readFileAsDataURL(selectedFile);
-       setProgress(20); // Progress after reading file
+       setProgress(20);
 
-       const img = new window.Image(); // Use window.Image to avoid conflict with next/image
+       const img = new window.Image();
 
        img.onload = async () => {
-           setProgress(30); // Progress after image loads
+           setProgress(30);
            try {
-               // Apply filter using the loaded image and get a PNG data URL
                const filteredDataUri = await applyClientSideFilter(img, analogStyle, sceneCategory, 'image/png');
-               setProgress(70); // Progress after filtering
+               setProgress(70);
 
-               setFilteredUrl(filteredDataUri); // Set the new data URI
+               setFilteredUrl(filteredDataUri);
                toast({
                  title: "Style Applied",
                  description: `${analogStyle} style applied for ${sceneCategory} scene.`,
                });
-               setProgress(100); // Final progress
-           } catch (filterError) {
+               setProgress(100);
+           } catch (filterError: any) { // Catch specific error type if known
                 console.error('Error applying filter:', filterError);
                 toast({
                     title: "Filter Error",
-                    description: "Failed to apply filter styles. Please try again.",
+                    // Provide more details if possible from filterError
+                    description: `Failed to apply filter styles: ${filterError.message || 'Please try again.'}`,
                     variant: "destructive",
                 });
-                setProgress(0); // Reset progress on error
+                setProgress(0);
            } finally {
                setIsLoading(false);
-               // Keep progress bar briefly visible after completion/error
                setTimeout(() => setProgress(0), 1500);
            }
        };
 
-       img.onerror = (error) => { // Added error parameter
-            console.error('Error loading image data for filtering:', error);
+       img.onerror = (errorEvent) => { // Use error event for details
+            console.error('Error loading image data for filtering:', errorEvent);
             toast({
                 title: "Image Load Error",
                 description: "Could not load the image data for processing. The file might be corrupted or in an unsupported format.",
@@ -252,25 +240,19 @@ export default function Home() {
             setProgress(0);
        }
 
-       // Set the source to the Data URL
        img.src = dataUrl;
 
-    } catch (error) {
-      // Catch potential errors from readFileAsDataURL
+    } catch (error: any) { // Catch specific error type if known
       console.error('Error reading file for filtering:', error);
       toast({
         title: "File Read Error",
-        description: "Could not read the selected image file. Please try again.",
+        description: `Could not read the selected image file: ${error.message || 'Please try again.'}`,
         variant: "destructive",
       });
       setIsLoading(false);
-      setProgress(0); // Reset progress on error
+      setProgress(0);
     }
-    // No finally here, it's handled inside onload/onerror/catch
   }, [selectedFile, analogStyle, sceneCategory, toast]);
-
-
- // Removed handleEnhanceDetails function
 
 
   const handleExport = () => {
@@ -284,13 +266,12 @@ export default function Home() {
     }
 
     const link = document.createElement('a');
-    link.href = filteredUrl; // This is now always a data URL
+    link.href = filteredUrl;
 
-    // Since filteredUrl is always PNG data URL now
     const extension = 'png';
     const safeStyleName = analogStyle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
-    link.download = `AnalogLens_${safeStyleName}_${sceneCategory}_${Date.now()}.${extension}`; // Suggest a filename
+    link.download = `AnalogLens_${safeStyleName}_${sceneCategory}_${Date.now()}.${extension}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -301,20 +282,28 @@ export default function Home() {
       });
   };
 
+  const handleImageClick = () => {
+    if (filteredUrl) {
+        setIsModalOpen(true);
+    } else if (previewUrl) {
+        // Optionally open original in modal too
+        // setIsModalOpen(true); // If you want to view original large
+        toast({
+            title: "Preview",
+            description: "This is the original image. Apply a style first to view the edited version.",
+            variant: "default", // Use default variant for informational messages
+        });
+    }
+  }
+
   const analogStyles = [
-    'Kodak Portra 400', // General purpose, warm, good skin tones
-    'Fujifilm Velvia 50', // High saturation, vivid colors, good for landscapes
-    'Ilford HP5 Plus 400', // Classic black and white, good contrast
-    'CineStill 800T', // Tungsten balanced, cinematic, cool shadows
-    'Agfa Vista 200', // Warm, saturated, slightly vintage feel
-    'Lomography Color Negative 400', // Punchy colors, sometimes experimental look
-    'Classic Teal & Orange LUT', // Popular cinematic grading
-    'Vintage Sepia Tone', // Old-fashioned brown tint
-    'Cool Cinematic Look', // Desaturated blues, moody feel
-    'Warm Golden Hour LUT' // Emulates warm, soft light of golden hour
+    'Kodak Portra 400', 'Fujifilm Velvia 50', 'Ilford HP5 Plus 400',
+    'CineStill 800T', 'Agfa Vista 200', 'Lomography Color Negative 400',
+    'Classic Teal & Orange LUT', 'Vintage Sepia Tone', 'Cool Cinematic Look',
+    'Warm Golden Hour LUT'
   ];
 
-  const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food', 'general']; // Added general
+  const sceneCategories = ['landscape', 'portrait', 'flowers', 'waterland', 'street', 'architecture', 'food', 'general'];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary flex flex-col items-center justify-center p-4 md:p-8">
@@ -392,11 +381,10 @@ export default function Home() {
                     {isLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
-                     <Paintbrush className="mr-2 h-4 w-4" /> // Changed icon
+                     <Paintbrush className="mr-2 h-4 w-4" />
                     )}
                     {isLoading ? 'Applying...' : 'Apply Style'}
                 </Button>
-                {/* Removed Enhance Details Button */}
             </div>
 
             {/* Progress Bar */}
@@ -412,26 +400,41 @@ export default function Home() {
           {/* Right Column: Image Preview */}
           <div className="space-y-4">
              <Label className="text-sm font-medium block text-center">Preview</Label>
-             <div className="aspect-video w-full bg-muted rounded-lg overflow-hidden border flex items-center justify-center relative shadow-inner">
+             <div
+                className="aspect-video w-full bg-muted rounded-lg overflow-hidden border flex items-center justify-center relative shadow-inner cursor-pointer group" // Added cursor-pointer and group
+                onClick={handleImageClick} // Add click handler to the container
+              >
                 {/* Display filtered first, then preview, then placeholder */}
                 {filteredUrl ? (
-                  <Image
-                    src={filteredUrl} // Now always a data URL
-                    alt={`Photo with ${analogStyle} filter applied`}
-                    layout="fill"
-                    objectFit="contain"
-                    data-ai-hint="filtered image"
-                    className="animate-fade-in"
-                    unoptimized // Necessary for data URLs in production builds
-                  />
+                  <>
+                    <Image
+                      src={filteredUrl}
+                      alt={`Photo with ${analogStyle} filter applied`}
+                      layout="fill"
+                      objectFit="contain"
+                      data-ai-hint="filtered image"
+                      className="animate-fade-in"
+                      unoptimized
+                    />
+                    {/* Zoom icon overlay */}
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                         <ZoomIn className="h-10 w-10 text-white" />
+                    </div>
+                  </>
                 ) : previewUrl ? (
-                  <Image
-                    src={previewUrl} // Object URL for preview only
-                    alt="Original Photo Preview"
-                    layout="fill"
-                    objectFit="contain"
-                    data-ai-hint="original image"
-                  />
+                   <>
+                    <Image
+                        src={previewUrl}
+                        alt="Original Photo Preview"
+                        layout="fill"
+                        objectFit="contain"
+                        data-ai-hint="original image"
+                    />
+                    {/* Optional: Hint to apply style */}
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <p className="text-white text-sm">Apply a style to zoom</p>
+                    </div>
+                   </>
                 ) : (
                   <div className="text-muted-foreground p-8 text-center">
                     <Upload className="mx-auto h-12 w-12 mb-4 opacity-50" />
@@ -461,13 +464,37 @@ export default function Home() {
          </CardFooter>
       </Card>
       <Toaster />
+
+      {/* Modal Dialog for Full View */}
+       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+         <DialogContent className="max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[60vw] p-0 border-0 bg-transparent shadow-none">
+           {filteredUrl && (
+             <div className="relative w-full h-auto aspect-[4/3] md:aspect-video"> {/* Adjust aspect ratio as needed */}
+                 <Image
+                   src={filteredUrl}
+                   alt={`Filtered photo - ${analogStyle}`}
+                   layout="fill"
+                   objectFit="contain"
+                   data-ai-hint="zoomed filtered image"
+                   unoptimized // Important for Data URLs
+                   className="rounded-lg" // Optional styling
+                 />
+             </div>
+           )}
+           {/* Explicit Close Button (optional, Dialog has one built-in) */}
+           {/* <DialogClose asChild>
+                <Button variant="ghost" size="icon" className="absolute top-2 right-2 text-white bg-black/50 hover:bg-black/70">
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">Close</span>
+                </Button>
+            </DialogClose> */}
+         </DialogContent>
+       </Dialog>
     </div>
   );
 }
 
-// Ensure fade-in animation is in globals.css
-// @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-// .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
+
 // Make sure globals.css includes:
 /*
 @layer utilities {
