@@ -1,4 +1,5 @@
 
+
 // src/app/page.tsx
 'use client';
 
@@ -699,7 +700,8 @@ export default function Home() {
                 <SelectTrigger id="analog-style" className="w-full h-8 text-xs"> {/* Smaller height and text */}
                   <SelectValue placeholder="Choose a style" />
                 </SelectTrigger>
-                <SelectContent>
+                {/* Adjust SelectContent styling for height */}
+                <SelectContent className="max-h-[calc(10*2.2rem)]"> {/* Approximate height for 10 items */}
                   {analogStyles.map(style => (
                      <SelectItem key={style} value={style} className="text-xs">{style}</SelectItem>
                   ))}
@@ -919,3 +921,4 @@ export default function Home() {
     </div>
   );
 }
+
