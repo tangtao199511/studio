@@ -60,10 +60,10 @@ const applyClientSideFilter = (
       'CineStill 800T': { contrast: 1.15, brightness: 1.0, sepia: 0.1, 'hue-rotate': -10, saturate: 1.1 },
       'Agfa Vista 200': { contrast: 1.05, saturate: 1.15, brightness: 1.0, sepia: 0.15 },
       'Lomography Color Negative 400': { saturate: 1.3, contrast: 1.1, brightness: 1.0 },
-      'Classic Teal & Orange LUT': { contrast: 1.1, sepia: 0.2, 'hue-rotate': -15, saturate: 1.2 },
-      'Vintage Sepia Tone': { sepia: 0.7, contrast: 1.05, brightness: 0.95 },
-      'Cool Cinematic Look': { contrast: 1.1, brightness: 0.95, 'hue-rotate': -10, saturate: 1.1 },
-      'Warm Golden Hour LUT': { sepia: 0.25, contrast: 1.05, brightness: 1.1, saturate: 1.1 },
+      'Classic Teal & Orange LUT': { contrast: 1.1, sepia: 0.2, 'hue-rotate': -15, saturate: 1.2 }, // New
+      'Vintage Sepia Tone': { sepia: 0.7, contrast: 1.05, brightness: 0.95 }, // New (strong sepia)
+      'Cool Cinematic Look': { contrast: 1.1, brightness: 0.95, 'hue-rotate': -10, saturate: 1.1 }, // New (slight adjustment from CineStill)
+      'Warm Golden Hour LUT': { sepia: 0.25, contrast: 1.05, brightness: 1.1, saturate: 1.1 }, // New
       'None': {}, // Added None option
     };
 
