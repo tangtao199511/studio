@@ -708,7 +708,7 @@ export default function Home() {
                   <SelectValue placeholder="Choose a style" />
                 </SelectTrigger>
                 {/* Adjust SelectContent styling for height */}
-                <SelectContent className="max-h-[calc(10*2.2rem)]"> {/* Approximate height for 10 items */}
+                <SelectContent className="max-h-[calc(6*2.2rem)]"> {/* Approximate height for 6 items */}
                   {analogStyles.map(style => (
                      <SelectItem key={style} value={style} className="text-xs">{style}</SelectItem>
                   ))}
@@ -928,3 +928,4 @@ export default function Home() {
     </div>
   );
 }
+
