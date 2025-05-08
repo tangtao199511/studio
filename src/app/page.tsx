@@ -1,3 +1,4 @@
+
 // src/app/page.tsx
 'use client';
 
@@ -576,10 +577,10 @@ export default function Home() {
               <div className="pt-3 mt-3 border-t border-border/20">
                 <div className="flex items-center justify-center flex-wrap gap-2">
                   <span className="text-xs font-medium text-foreground/80">Create</span>
-                  <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" disabled>
+                  <Button variant="outline" size="sm" className="text-xs h-7 px-2.5">
                     NFT for Filter
                   </Button>
-                  <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" disabled>
+                  <Button variant="outline" size="sm" className="text-xs h-7 px-2.5">
                     NFT for Picture
                   </Button>
                 </div>
@@ -646,6 +647,7 @@ export default function Home() {
     </div>
   );
 }
+
 
 
 
