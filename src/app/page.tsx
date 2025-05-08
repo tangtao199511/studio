@@ -574,9 +574,9 @@ export default function Home() {
 
             {/* New NFT Minting Section - Appears only after export is possible */}
             {filteredUrl && selectedFile && (
-              <div className="pt-3 mt-3 border-t border-border/20">
-                <div className="flex items-center justify-center flex-wrap gap-2">
-                  <span className="text-xs font-medium text-foreground/80">Create</span>
+              <div className="pt-3 mt-3 border-t border-border/20 text-center">
+                <p className="text-xs font-medium text-foreground/80 mb-1.5">Create</p>
+                <div className="flex items-center justify-center gap-2 mb-1.5">
                   <Button variant="outline" size="sm" className="text-xs h-7 px-2.5">
                     NFT for Filter
                   </Button>
@@ -584,7 +584,7 @@ export default function Home() {
                     NFT for Picture
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground text-center mt-1.5">on Endless Chain</p>
+                <p className="text-xs text-muted-foreground">on Endless Chain</p>
               </div>
             )}
           </div>
@@ -647,6 +647,7 @@ export default function Home() {
     </div>
   );
 }
+
 
 
 
