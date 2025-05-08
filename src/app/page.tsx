@@ -483,7 +483,7 @@ export default function Home() {
       <Card className="w-full max-w-7xl shadow-lg overflow-hidden border-border/50 rounded-lg flex flex-col flex-grow">
         <CardHeader className="bg-card border-b border-border/50 p-3 md:p-4 flex-shrink-0">
           <CardTitle className="text-xl md:text-2xl font-semibold tracking-tight text-center text-primary">AI MoodLens 🎨</CardTitle>
-          <CardDescription className="text-center text-muted-foreground mt-0.5 text-xs md:text-sm">Describe your mood, let AI tune the vibe. Optionally pick a base style.</CardDescription>
+          <CardDescription className="text-center text-muted-foreground mt-0.5 text-xs md:text-sm">Whisper your mood, let AI paint its hue. Enhance with a classic touch, if you wish to.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6 grid md:grid-cols-4 gap-4 md:gap-6 items-start flex-grow">
           <div className="md:col-span-1 space-y-3 md:space-y-4 overflow-y-auto h-full pr-2">
@@ -630,4 +630,5 @@ export default function Home() {
     </div>
   );
 }
+
 
