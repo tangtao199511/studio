@@ -507,7 +507,7 @@ export default function Home() {
                 placeholder="e.g., 'A melancholic rainy day', 'Joyful summer evening', 'Mysterious forest path'"
                 value={moodDescription}
                 onChange={(e) => setMoodDescription(e.target.value)}
-                className="text-xs min-h-[60px]"
+                className="text-xs min-h-[80px] md:min-h-[100px]"
                 disabled={!originalDataUrl || isLoading || isTuningWithAI}
               />
               <Button onClick={handleTuneWithAI} size="sm" className="w-full text-xs h-8 mt-1" disabled={!originalDataUrl || !moodDescription.trim() || isLoading || isTuningWithAI}>
@@ -519,7 +519,7 @@ export default function Home() {
             
             {/* 3. Style Selection (Optional) */}
             <div className="space-y-1">
-              <Label htmlFor="analog-style" className="text-xs font-medium text-foreground/80">3. Base Style (Optional)</Label>
+              <Label htmlFor="analog-style" className="text-xs font-medium text-foreground/80">3. Enhance by Preset:</Label>
               <Select value={analogStyle} onValueChange={handleAnalogStyleChange} disabled={!originalDataUrl || isLoading || isTuningWithAI}>
                 <SelectTrigger id="analog-style" className="w-full h-8 text-xs"><SelectValue placeholder="Choose a style" /></SelectTrigger>
                 <SelectContent className="max-h-[calc(6*2.2rem)]">
