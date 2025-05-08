@@ -8,8 +8,8 @@ import { Toaster } from "@/components/ui/toaster" // Import Toaster
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata: Metadata = {
-  title: 'AnalogLens',
-  description: 'Apply analog film styles to your photos with AI.',
+  title: 'AI MoodLens', // Changed application name
+  description: 'Let AI tune your photos based on your described mood and optional base styles.', // Updated description
 };
 
 export default function RootLayout({
@@ -30,3 +30,4 @@ export default function RootLayout({
     </html>
   );
 }
+

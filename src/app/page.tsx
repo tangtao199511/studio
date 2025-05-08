@@ -178,6 +178,7 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (.
 // Base filter definitions (used if AI tuning is not applied or fails)
 // Keys should match the `defaults` in `applyClientSideFilter` (e.g., use `hueRotate`)
 const baseStyleDefinitions: Record<string, Record<string, number | undefined>> = {
+  'None': {}, // Add "None" style
   'Kodak Portra 400': { contrast: 1.1, saturate: 1.1, brightness: 1.05, sepia: 0.1 },
   'Fujifilm Velvia 50': { saturate: 1.4, contrast: 1.2, brightness: 0.95 },
   'Ilford HP5 Plus 400': { grayscale: 1, contrast: 1.2, brightness: 1.1 },
@@ -197,7 +198,6 @@ const baseStyleDefinitions: Record<string, Record<string, number | undefined>> =
   'Infrared Simulation': { hueRotate: 180, saturate: 1.2, contrast: 1.1, brightness: 1.1 },
   'Grungy Matte Look': { contrast: 0.9, saturate: 0.9, brightness: 1.05, sepia: 0.1 },
   'Neon Noir': { contrast: 1.3, brightness: 0.9, saturate: 1.4, hueRotate: -20 },
-  'None': {},
 };
 
 
@@ -207,12 +207,12 @@ export default function Home() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [filteredUrl, setFilteredUrl] = useState<string | null>(null);
   const [filteredPreviewUrl, setFilteredPreviewUrl] = useState<string | null>(null);
-  const [analogStyle, setAnalogStyle] = useState<string>('Kodak Portra 400');
-  const [moodDescription, setMoodDescription] = useState<string>(''); // New state for mood
-  const [aiGeneratedFilterParams, setAiGeneratedFilterParams] = useState<FilterParamsOutput | null>(null); // For AI params
+  const [analogStyle, setAnalogStyle] = useState<string>('None'); // Default to "None"
+  const [moodDescription, setMoodDescription] = useState<string>('');
+  const [aiGeneratedFilterParams, setAiGeneratedFilterParams] = useState<FilterParamsOutput | null>(null);
   const [filterIntensity, setFilterIntensity] = useState<number>(100);
-  const [isLoading, setIsLoading] = useState<boolean>(false); // For client-side image processing
-  const [isTuningWithAI, setIsTuningWithAI] = useState<boolean>(false); // For AI generation
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isTuningWithAI, setIsTuningWithAI] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isModalImageLoading, setIsModalImageLoading] = useState<boolean>(true);
@@ -222,8 +222,8 @@ export default function Home() {
 
   const intensityRef = useRef(filterIntensity);
   const analogStyleRef = useRef(analogStyle);
-  const moodDescriptionRef = useRef(moodDescription); // Ref for mood
-  const aiGeneratedFilterParamsRef = useRef(aiGeneratedFilterParams); // Ref for AI params
+  const moodDescriptionRef = useRef(moodDescription);
+  const aiGeneratedFilterParamsRef = useRef(aiGeneratedFilterParams);
   const originalDataUrlRef = useRef(originalDataUrl);
   const currentMimeTypeRef = useRef(currentMimeType);
 
@@ -260,9 +260,9 @@ export default function Home() {
               } finally {
                   setSelectedFile(file);
                   setFilteredUrl(null); setFilteredPreviewUrl(null);
-                  setAiGeneratedFilterParams(null); // Reset AI params on new image
+                  setAiGeneratedFilterParams(null);
                   setProgress(100); setIsLoading(false); setTimeout(() => setProgress(0), 1000);
-                  // Auto-apply base style
+                  // Auto-apply effect based on current settings (which will be "None" initially or last selection)
                   await applyCurrentFilterEffect(dataUrl, analogStyleRef.current, null, intensityRef.current, file.type);
               }
           };
@@ -281,7 +281,6 @@ export default function Home() {
 
   const handleImportClick = () => fileInputRef.current?.click();
 
-  // Main function to apply whatever the current filter configuration is
   const applyCurrentFilterEffect = useCallback(async (
      sourceUrl: string | null = originalDataUrlRef.current,
      styleName: string = analogStyleRef.current,
@@ -302,14 +301,15 @@ export default function Home() {
                 let targetParamsForFilter;
                 if (aiParams) {
                     targetParamsForFilter = aiParams;
-                } else {
+                } else if (styleName !== 'None') {
                     const baseStyle = baseStyleDefinitions[styleName] || {};
-                    // Convert baseStyle to use 'hueRotate' if 'hue-rotate' exists
                     targetParamsForFilter = { ...baseStyle };
-                    if (baseStyle['hue-rotate'] !== undefined) {
+                    if (baseStyle['hue-rotate'] !== undefined) { // compatibility for old key
                         targetParamsForFilter.hueRotate = baseStyle['hue-rotate'];
                         delete targetParamsForFilter['hue-rotate'];
                     }
+                } else {
+                    targetParamsForFilter = {}; // No base style, no AI params = empty filter (effectively defaults)
                 }
 
                 const filteredDataUri = await applyClientSideFilter(img, targetParamsForFilter, intensity, mimeType);
@@ -322,17 +322,17 @@ export default function Home() {
                         const lowResFiltered = await createLowResPreview(filteredImgForPreview);
                         setFilteredPreviewUrl(lowResFiltered);
                     } catch (previewError) {
-                        setFilteredPreviewUrl(filteredDataUri); // Fallback
+                        setFilteredPreviewUrl(filteredDataUri);
                     }
                     setProgress(90);
                 };
                 filteredImgForPreview.onerror = () => setFilteredPreviewUrl(filteredDataUri);
                 filteredImgForPreview.src = filteredDataUri;
 
-                if (wasFiltered || aiParams) { // Toast if re-applying or AI tuned
+                if (wasFiltered || aiParams || styleName !== 'None') {
                     toast({
-                        title: aiParams ? "AI Tune Applied" : "Style Updated",
-                        description: `${styleName} style ${aiParams ? "tuned by AI " : ""}applied at ${intensity}% intensity.`,
+                        title: aiParams ? "AI Tune Applied" : (styleName !== 'None' ? "Style Updated" : "Filter Intensity Updated"),
+                        description: `${styleName !== 'None' ? styleName + " style" : ""} ${aiParams ? "tuned by AI " : ""}${styleName !== 'None' || aiParams ? "applied" : "updated"} at ${intensity}% intensity.`,
                     });
                 }
                 setProgress(100);
@@ -357,24 +357,24 @@ export default function Home() {
 
   const handleTuneWithAI = async () => {
     if (!originalDataUrlRef.current || !moodDescriptionRef.current.trim()) {
-        toast({ title: "Missing Input", description: "Please provide a mood/context description.", variant: "destructive" });
+        toast({ title: "Missing Input", description: "Please describe the mood/context for AI tuning.", variant: "destructive" });
         return;
     }
     setIsTuningWithAI(true); setProgress(10);
     try {
         setProgress(30);
         const params = await generateFilterParams({
-            baseStyle: analogStyleRef.current,
+            baseStyle: analogStyleRef.current === 'None' ? undefined : analogStyleRef.current, // Pass undefined if "None"
             moodDescription: moodDescriptionRef.current,
         });
         setProgress(70);
         setAiGeneratedFilterParams(params);
-        aiGeneratedFilterParamsRef.current = params; // Update ref immediately
+        aiGeneratedFilterParamsRef.current = params;
         toast({ title: "AI Tuning Complete", description: "Filter parameters generated by AI." });
         await applyCurrentFilterEffect(
             originalDataUrlRef.current,
-            analogStyleRef.current,
-            params, // Pass new AI params
+            analogStyleRef.current, // Base style still relevant for display name / context
+            params,
             intensityRef.current,
             currentMimeTypeRef.current
         );
@@ -382,24 +382,23 @@ export default function Home() {
     } catch (error: any) {
         console.error("AI Tuning Error:", error);
         toast({ title: "AI Tuning Failed", description: error.message || "Could not generate AI parameters.", variant: "destructive" });
-        setAiGeneratedFilterParams(null); // Reset on error
+        setAiGeneratedFilterParams(null);
         aiGeneratedFilterParamsRef.current = null;
-        // Optionally, re-apply base style if AI fails
-        // await applyCurrentFilterEffect();
+        // Re-apply base style or "None" if AI fails
+        await applyCurrentFilterEffect(originalDataUrlRef.current, analogStyleRef.current, null, intensityRef.current, currentMimeTypeRef.current);
         setProgress(0);
     } finally {
         setIsTuningWithAI(false);
-        setTimeout(() => setProgress(isTuningWithAI ? 0 : progress), 1500); // Ensure progress resets if AI tuning was active
+        setTimeout(() => setProgress(isTuningWithAI ? 0 : progress), 1500);
     }
   };
 
-  // Debounced filter application for intensity slider
   const debouncedApplyFilterForIntensity = useMemo(
     () => debounce(() => {
         applyCurrentFilterEffect(
             originalDataUrlRef.current,
             analogStyleRef.current,
-            aiGeneratedFilterParamsRef.current, // Use current AI params
+            aiGeneratedFilterParamsRef.current,
             intensityRef.current,
             currentMimeTypeRef.current
         );
@@ -410,7 +409,7 @@ export default function Home() {
   const handleIntensityChange = (value: number[]) => {
       const newIntensity = value[0];
       setFilterIntensity(newIntensity);
-      intensityRef.current = newIntensity;
+      intensityRef.current = newIntensity; // Update ref immediately
       if (originalDataUrlRef.current) {
           debouncedApplyFilterForIntensity();
       }
@@ -418,14 +417,18 @@ export default function Home() {
 
   const handleAnalogStyleChange = (newStyle: string) => {
     setAnalogStyle(newStyle);
-    analogStyleRef.current = newStyle;
-    setAiGeneratedFilterParams(null); // Reset AI params when style changes
-    aiGeneratedFilterParamsRef.current = null;
+    analogStyleRef.current = newStyle; // Update ref immediately
+    // If AI parameters were active, we keep them unless the user re-tunes.
+    // If no AI params, or newStyle is 'None', AI params are effectively reset for the next plain style application.
+    // if (newStyle === 'None') {
+    //   setAiGeneratedFilterParams(null);
+    //   aiGeneratedFilterParamsRef.current = null;
+    // }
     if (originalDataUrlRef.current) {
         applyCurrentFilterEffect(
             originalDataUrlRef.current,
-            newStyle, // Pass new style
-            null,     // Pass null for AI params (reset)
+            newStyle,
+            aiGeneratedFilterParamsRef.current, // Keep existing AI params if any, otherwise null
             intensityRef.current,
             currentMimeTypeRef.current
         );
@@ -441,13 +444,15 @@ export default function Home() {
     link.href = filteredUrl;
     const mimeType = filteredUrl.split(';')[0].split(':')[1] || 'image/png';
     const extension = mimeType.split('/')[1] || 'png';
-    const safeStyleName = analogStyleRef.current.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    
     const originalFileName = selectedFile.name;
     const lastDotIndex = originalFileName.lastIndexOf('.');
     const fileNameWithoutExtension = lastDotIndex === -1 ? originalFileName : originalFileName.substring(0, lastDotIndex);
+    
+    const safeStyleName = analogStyleRef.current === 'None' ? 'custom' : analogStyleRef.current.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const aiTuneIndicator = aiGeneratedFilterParamsRef.current ? "_AI-tuned" : "";
 
-    link.download = `${fileNameWithoutExtension}_AnalogLens_${safeStyleName}${aiTuneIndicator}_${intensityRef.current}pct.${extension}`;
+    link.download = `${fileNameWithoutExtension}_AIMoodLens_${safeStyleName}${aiTuneIndicator}_${intensityRef.current}pct.${extension}`;
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     toast({ title: "Exported", description: "Edited photo saved." });
   };
@@ -469,7 +474,6 @@ export default function Home() {
    const handlePreviewOriginalRelease = () => setShowOriginalPreview(false);
 
   const analogStyles = Object.keys(baseStyleDefinitions);
-  // Scene categories removed
 
   const displayUrl = showOriginalPreview ? previewUrl : (filteredPreviewUrl || previewUrl);
   const displayAlt = showOriginalPreview ? "Original Photo Preview (Hold)" : (filteredPreviewUrl ? `Photo with ${analogStyle} style` : (previewUrl ? "Original Photo Preview" : "Placeholder"));
@@ -478,8 +482,8 @@ export default function Home() {
     <div className="h-screen bg-background flex flex-col items-center justify-center p-4 md:p-8">
       <Card className="w-full max-w-7xl shadow-lg overflow-hidden border-border/50 rounded-lg flex flex-col flex-grow">
         <CardHeader className="bg-card border-b border-border/50 p-4 md:p-6 flex-shrink-0">
-          <CardTitle className="text-2xl md:text-3xl font-semibold tracking-tight text-center text-primary">AnalogLens ✨</CardTitle>
-          <CardDescription className="text-center text-muted-foreground mt-1 text-sm">Apply classic film styles, tuned by your mood with AI.</CardDescription>
+          <CardTitle className="text-2xl md:text-3xl font-semibold tracking-tight text-center text-primary">AI MoodLens 🎨</CardTitle>
+          <CardDescription className="text-center text-muted-foreground mt-1 text-sm">Describe your mood, let AI tune the vibe. Optionally pick a base style.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6 grid md:grid-cols-4 gap-4 md:gap-6 items-start flex-grow">
           <div className="md:col-span-1 space-y-3 md:space-y-4 overflow-y-auto h-full pr-2">
@@ -495,20 +499,9 @@ export default function Home() {
               {filteredUrl && !isLoading && (<p className="text-xs text-muted-foreground text-center pt-0.5">Style applied.</p>)}
             </div>
 
-            {/* 2. Style Selection */}
+            {/* 2. Mood Input & AI Tune */}
             <div className="space-y-1">
-              <Label htmlFor="analog-style" className="text-xs font-medium text-foreground/80">2. Base Style</Label>
-              <Select value={analogStyle} onValueChange={handleAnalogStyleChange} disabled={!originalDataUrl || isLoading || isTuningWithAI}>
-                <SelectTrigger id="analog-style" className="w-full h-8 text-xs"><SelectValue placeholder="Choose a style" /></SelectTrigger>
-                <SelectContent className="max-h-[calc(6*2.2rem)]">
-                  {analogStyles.map(style => (<SelectItem key={style} value={style} className="text-xs">{style}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* 3. Mood Input & AI Tune */}
-            <div className="space-y-1">
-              <Label htmlFor="mood-description" className="text-xs font-medium text-foreground/80">3. Describe Mood/Context (Optional)</Label>
+              <Label htmlFor="mood-description" className="text-xs font-medium text-foreground/80">2. Describe Mood/Context</Label>
               <Textarea
                 id="mood-description"
                 placeholder="e.g., 'A melancholic rainy day', 'Joyful summer evening', 'Mysterious forest path'"
@@ -523,6 +516,17 @@ export default function Home() {
               </Button>
               {aiGeneratedFilterParams && !isTuningWithAI && (<p className="text-xs text-muted-foreground text-center pt-0.5">AI parameters applied.</p>)}
             </div>
+            
+            {/* 3. Style Selection (Optional) */}
+            <div className="space-y-1">
+              <Label htmlFor="analog-style" className="text-xs font-medium text-foreground/80">3. Base Style (Optional)</Label>
+              <Select value={analogStyle} onValueChange={handleAnalogStyleChange} disabled={!originalDataUrl || isLoading || isTuningWithAI}>
+                <SelectTrigger id="analog-style" className="w-full h-8 text-xs"><SelectValue placeholder="Choose a style" /></SelectTrigger>
+                <SelectContent className="max-h-[calc(6*2.2rem)]">
+                  {analogStyles.map(style => (<SelectItem key={style} value={style} className="text-xs">{style}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* 4. Intensity Slider */}
             <div className="space-y-1">
@@ -530,7 +534,7 @@ export default function Home() {
               <Slider id="intensity-slider" min={0} max={100} step={1} value={[filterIntensity]} onValueChange={handleIntensityChange} className="my-1" disabled={!originalDataUrl || isLoading || isTuningWithAI} />
             </div>
 
-            {/* Re-apply Button (for manual refresh if needed) */}
+            {/* Re-apply Button */}
             <div className="space-y-1">
                  <Button
                     onClick={() => applyCurrentFilterEffect()}
@@ -542,7 +546,6 @@ export default function Home() {
                 </Button>
             </div>
 
-            {/* Progress Bar */}
              {(isLoading || isTuningWithAI) && (
                 <div className="space-y-0.5">
                     <Progress value={progress} className="w-full h-1 md:h-1.5" />
@@ -550,7 +553,6 @@ export default function Home() {
                 </div>
              )}
 
-             {/* Preview Original Button */}
              {filteredPreviewUrl && previewUrl && (
                  <Button variant="outline" size="sm" className="w-full text-xs h-8"
                     onMouseDown={handlePreviewOriginalPress} onMouseUp={handlePreviewOriginalRelease}
@@ -561,7 +563,6 @@ export default function Home() {
                  </Button>
              )}
 
-            {/* Export Button */}
             {filteredUrl && (
                  <Button onClick={handleExport} variant="default" size="sm" className="w-full text-xs h-8">
                     <Download className="mr-1 h-3 w-3" /> Export
@@ -590,7 +591,7 @@ export default function Home() {
                     <span className="text-sm">Import a photo to start</span>
                   </div>
                 )}
-                 {(isLoading || isTuningWithAI) && ( // Show overlay for both client processing and AI tuning
+                 {(isLoading || isTuningWithAI) && (
                   <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center backdrop-blur-sm space-y-1 z-10 rounded-lg">
                       <Loader2 className="h-6 w-6 md:h-8 md:w-8 animate-spin text-primary" />
                       <p className="text-xs md:text-sm text-muted-foreground">{isTuningWithAI ? 'AI Tuning...' : 'Processing...'}</p>
@@ -601,7 +602,7 @@ export default function Home() {
           </div>
         </CardContent>
          <CardFooter className="border-t border-border/50 bg-card p-2 md:p-3 text-center text-xs text-muted-foreground flex-shrink-0">
-           AI-Powered Photo Styling | AnalogLens &copy; {new Date().getFullYear()}
+           AI-Powered Photo Styling | AI MoodLens &copy; {new Date().getFullYear()}
          </CardFooter>
       </Card>
       <Toaster />
@@ -629,3 +630,4 @@ export default function Home() {
     </div>
   );
 }
+

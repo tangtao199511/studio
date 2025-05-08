@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview Generates photo filter parameters based on a base style and user's mood description.
+ * @fileOverview Generates photo filter parameters based on a user's mood description and an optional base style.
  *
  * - generateFilterParams - A function that calls the Genkit flow to get filter parameters.
  * - GenerateFilterParamsInput - The input type for the flow.
@@ -8,11 +8,9 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit'; // Changed from 'genkit/zod' to 'genkit'
+import { z } from 'genkit'; 
 
 // Define the schema for the filter parameters we expect from the LLM
-// These keys should match the 'defaults' in applyClientSideFilter and baseStyleDefinitions on the client
-// Using camelCase for consistency in JS/TS objects.
 const FilterParamsSchema = z.object({
   contrast: z.number().min(0).max(3).optional().describe('Contrast adjustment. Default is 1.0 (no change). Values between 0 (no contrast) and 3 (high contrast).'),
   saturate: z.number().min(0).max(3).optional().describe('Saturation adjustment. Default is 1.0 (no change). Values between 0 (grayscale) and 3 (super saturated).'),
@@ -25,8 +23,8 @@ const FilterParamsSchema = z.object({
 export type FilterParamsOutput = z.infer<typeof FilterParamsSchema>;
 
 const GenerateFilterParamsInputSchema = z.object({
-  baseStyle: z.string().describe('The name of the base analog film style selected by the user (e.g., "Kodak Portra 400", "Ilford HP5 Plus 400").'),
-  moodDescription: z.string().describe("The user's description of the mood, feeling, or context they want to convey in the photo (e.g., 'A melancholic rainy day', 'Joyful summer evening', 'Mysterious forest path')."),
+  baseStyle: z.string().optional().describe('The name of the base analog film style selected by the user (e.g., "Kodak Portra 400", "Ilford HP5 Plus 400"). If "None" or omitted, generate parameters based primarily on mood.'),
+  moodDescription: z.string().describe("The user's description of the mood, feeling, or context they want to convey in the photo (e.g., 'A melancholic rainy day', 'Joyful summer evening', 'Mysterious forest path'). This is the primary driver for filter generation."),
 });
 export type GenerateFilterParamsInput = z.infer<typeof GenerateFilterParamsInputSchema>;
 
@@ -38,14 +36,18 @@ const filterParamsPrompt = ai.definePrompt({
   name: 'generateFilterParamsPrompt',
   input: { schema: GenerateFilterParamsInputSchema },
   output: { schema: FilterParamsSchema },
-  prompt: `You are an expert photo editing assistant. Your task is to suggest adjustments to photo filter parameters (contrast, saturation, brightness, sepia, grayscale, hueRotate) to achieve a specific mood, based on a selected analog film style.
+  prompt: `You are an expert photo editing assistant. Your primary task is to suggest adjustments to photo filter parameters (contrast, saturation, brightness, sepia, grayscale, hueRotate) to achieve a specific mood, based on the user's description. An optional base analog film style might be provided for context.
 
-Base Analog Style: {{{baseStyle}}}
-User's Desired Mood/Context: {{{moodDescription}}}
+User's Desired Mood/Context (Primary Driver): {{{moodDescription}}}
 
-Consider the characteristics of the '{{{baseStyle}}}'. For example, if it's a vibrant style, you might enhance saturation further for a joyful mood, or slightly desaturate for a melancholic mood. If it's a B&W style, only grayscale and contrast are relevant.
+{{#if baseStyle}}
+Optional Base Analog Style: {{{baseStyle}}}
+If a '{{{baseStyle}}}' is provided and is not "None", consider its characteristics. For example, if it's a vibrant style, you might enhance saturation further for a joyful mood, or slightly desaturate for a melancholic mood. If it's a B&W style, only grayscale and contrast are relevant in conjunction with the mood.
+{{else}}
+No base style selected. Generate filter parameters solely based on the desired mood.
+{{/if}}
 
-Provide filter parameter values that would best reflect the '{{{moodDescription}}}' when applied to an image already processed with the '{{{baseStyle}}}' as a starting point.
+Provide filter parameter values that would best reflect the '{{{moodDescription}}}'. If a '{{{baseStyle}}}' was provided (and not "None"), your suggestions should enhance or modify that style to fit the mood. If no base style was provided, or it was "None", generate parameters from scratch based on the mood.
 
 Output JSON with the following parameters. If a parameter is not applicable or should remain at its default (no change), you can omit it or provide its default value (e.g., contrast: 1.0, saturate: 1.0, brightness: 1.0, sepia: 0, grayscale: 0, hueRotate: 0).
 
@@ -59,8 +61,11 @@ Output JSON with the following parameters. If a parameter is not applicable or s
 For example, for a 'Joyful summer evening' mood with 'Kodak Portra 400' base style, you might suggest:
 { "saturate": 1.2, "brightness": 1.05, "hueRotate": 5 }
 
-For a 'Mysterious forest path' with 'Ilford HP5 Plus 400' (a B&W film), you might suggest:
+For a 'Mysterious forest path' mood with 'Ilford HP5 Plus 400' (a B&W film), you might suggest:
 { "contrast": 1.3, "brightness": 0.9, "grayscale": 1.0 }
+
+For a 'Nostalgic and dreamy' mood with no base style (or base style "None"), you might suggest:
+{ "sepia": 0.2, "brightness": 1.05, "contrast": 0.9, "saturate": 0.9 }
 
 Only output the JSON object containing the filter parameters.
 `,
@@ -73,7 +78,13 @@ const generateFilterParamsFlow = ai.defineFlow(
     outputSchema: FilterParamsSchema,
   },
   async (input) => {
-    const { output } = await filterParamsPrompt(input);
+    // If baseStyle is "None", treat it as if it wasn't provided to the AI model for cleaner prompting.
+    const flowInput = { ...input };
+    if (flowInput.baseStyle === 'None') {
+      flowInput.baseStyle = undefined;
+    }
+
+    const { output } = await filterParamsPrompt(flowInput);
     if (!output) {
       throw new Error('AI failed to generate filter parameters.');
     }
@@ -84,3 +95,4 @@ const generateFilterParamsFlow = ai.defineFlow(
     return output;
   }
 );
+
