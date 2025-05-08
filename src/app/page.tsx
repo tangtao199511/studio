@@ -570,6 +570,22 @@ export default function Home() {
             )}
              {!filteredUrl && previewUrl && !isLoading && !isTuningWithAI && (<p className="text-xs text-muted-foreground text-center pt-1">Export enabled soon.</p>)}
              {!previewUrl && (<p className="text-xs text-muted-foreground text-center pt-1">Import image to start.</p>)}
+
+            {/* New NFT Minting Section - Appears only after export is possible */}
+            {filteredUrl && selectedFile && (
+              <div className="pt-3 mt-3 border-t border-border/20">
+                <div className="flex items-center justify-center flex-wrap gap-2">
+                  <span className="text-xs font-medium text-foreground/80">Create</span>
+                  <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" disabled>
+                    NFT for Filter
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs h-7 px-2.5" disabled>
+                    NFT for Picture
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground text-center mt-1.5">on Endless Chain</p>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Image Preview */}
@@ -630,5 +646,6 @@ export default function Home() {
     </div>
   );
 }
+
 
 
