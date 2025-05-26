@@ -589,10 +589,11 @@ export default function Home() {
             )}
           </div>
 
-          {/* Right Column: Image Preview */}
-          <div className="md:col-span-3 space-y-2 md:space-y-3 flex flex-col h-full">
+          {/* Right Column: Image Preview - hidden on mobile, flex on md+ */}
+          <div className="md:col-span-3 space-y-2 md:space-y-3 flex flex-col h-full hidden md:flex">
              <Label className="text-sm font-medium block text-center text-foreground/80 flex-shrink-0">Preview</Label>
-             <div className="w-full bg-muted/50 rounded-lg overflow-hidden border border-border/50 relative shadow-inner cursor-pointer group flex-grow" onClick={handleImageClick}>
+             {/* Added flex items-center justify-center to this div for better image centering */}
+             <div className="w-full bg-muted/50 rounded-lg overflow-hidden border border-border/50 relative shadow-inner cursor-pointer group flex-grow flex items-center justify-center" onClick={handleImageClick}>
                 {displayUrl ? (
                   <>
                     <Image src={displayUrl} alt={displayAlt} fill sizes="(max-width: 768px) 100vw, 75vw" style={{ objectFit: 'contain' }} data-ai-hint={showOriginalPreview ? "original preview" : (filteredUrl ? "filtered preview" : "original preview")} unoptimized priority={!filteredUrl} />
@@ -603,7 +604,7 @@ export default function Home() {
                     )}
                   </>
                 ) : (
-                  <div className="text-muted-foreground p-8 text-center flex flex-col items-center justify-center h-full"> {/* Added h-full to center placeholder vertically */}
+                  <div className="text-muted-foreground p-8 text-center flex flex-col items-center justify-center h-full">
                     <Upload className="mx-auto h-10 w-10 md:h-12 md:w-12 mb-2 md:mb-3 opacity-50" />
                     <span className="text-sm">Import a photo to start</span>
                   </div>
@@ -647,9 +648,3 @@ export default function Home() {
     </div>
   );
 }
-
-
-
-
-
-
