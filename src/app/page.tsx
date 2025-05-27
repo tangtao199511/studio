@@ -480,14 +480,15 @@ export default function Home() {
   const displayAlt = showOriginalPreview ? "Original Photo Preview (Hold)" : (filteredPreviewUrl ? `Photo with ${analogStyle} style` : (previewUrl ? "Original Photo Preview" : "Placeholder"));
 
   return (
-    <div className="h-screen bg-background flex flex-col items-center justify-center p-4 md:p-6">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 md:p-6"> {/* Changed h-screen to min-h-screen */}
       <Card className="w-full max-w-7xl shadow-lg overflow-hidden border-border/50 rounded-lg flex flex-col flex-grow">
         <CardHeader className="bg-card border-b border-border/50 p-3 md:p-4 flex-shrink-0">
           <CardTitle className="text-xl md:text-2xl font-semibold tracking-tight text-center text-primary">AI MoodLens 🎨</CardTitle>
           <CardDescription className="text-center text-muted-foreground mt-0.5 text-xs md:text-sm">Whisper your mood, let AI paint its hue. Enhance with a classic touch, if you wish to.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6 grid md:grid-cols-4 gap-4 md:gap-6 items-start flex-grow">
-          <div className="md:col-span-1 space-y-3 md:space-y-4 overflow-y-auto h-full pr-2"> {/* Controls Column */}
+          {/* Controls Column: Apply md:h-full and md:overflow-y-auto */}
+          <div className="md:col-span-1 space-y-3 md:space-y-4 md:overflow-y-auto md:h-full pr-0 md:pr-2">
             {/* 1. Import */}
             <div className="space-y-1">
               <Label htmlFor="photo-upload" className="text-xs font-medium text-foreground/80">1. Import Photo</Label>
@@ -689,3 +690,4 @@ export default function Home() {
     </div>
   );
 }
+

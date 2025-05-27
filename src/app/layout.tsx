@@ -22,12 +22,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning={true}>
       {/* Apply Inter font variable and antialiased class */}
       {/* Added suppressHydrationWarning to body tag to address potential extension interference */}
-      {/* Added overflow-hidden to prevent scrolling */}
-      <body className={`${inter.variable} font-sans antialiased overflow-hidden`} suppressHydrationWarning={true}>
+      {/* Removed overflow-hidden to allow scrolling when content exceeds viewport height */}
+      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning={true}>
         {children}
         <Toaster /> {/* Add Toaster component here */}
       </body>
     </html>
   );
 }
-
