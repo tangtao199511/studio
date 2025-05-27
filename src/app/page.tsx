@@ -487,7 +487,7 @@ export default function Home() {
           <CardDescription className="text-center text-muted-foreground mt-0.5 text-xs md:text-sm">Whisper your mood, let AI paint its hue. Enhance with a classic touch, if you wish to.</CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6 grid md:grid-cols-4 gap-4 md:gap-6 items-start flex-grow">
-          <div className="md:col-span-1 space-y-3 md:space-y-4 overflow-y-auto h-full pr-2">
+          <div className="md:col-span-1 space-y-3 md:space-y-4 overflow-y-auto h-full pr-2"> {/* Controls Column */}
             {/* 1. Import */}
             <div className="space-y-1">
               <Label htmlFor="photo-upload" className="text-xs font-medium text-foreground/80">1. Import Photo</Label>
@@ -534,6 +534,48 @@ export default function Home() {
               <Label htmlFor="intensity-slider" className="text-xs font-medium text-foreground/80">4. Intensity ({filterIntensity}%)</Label>
               <Slider id="intensity-slider" min={0} max={100} step={1} value={[filterIntensity]} onValueChange={handleIntensityChange} className="my-1" disabled={!originalDataUrl || isLoading || isTuningWithAI} />
             </div>
+            
+            {/* Mobile Preview Section - Placed above "Re-apply Style" button */}
+            <div className="block md:hidden w-full space-y-2 my-4">
+              <Label className="text-sm font-medium block text-center text-foreground/80">Preview</Label>
+              <div
+                className="w-full aspect-[4/3] bg-muted/50 rounded-lg overflow-hidden border border-border/50 relative shadow-inner group flex items-center justify-center cursor-pointer"
+                onClick={handleImageClick}
+              >
+                {displayUrl ? (
+                  <>
+                    <Image
+                      src={displayUrl}
+                      alt={displayAlt}
+                      fill
+                      sizes="100vw" // It takes full width of its container on mobile
+                      style={{ objectFit: 'contain' }}
+                      data-ai-hint={showOriginalPreview ? "original preview mobile" : (filteredUrl ? "filtered preview mobile" : "original preview mobile")}
+                      unoptimized
+                      priority={!filteredUrl}
+                    />
+                    {(filteredUrl || originalDataUrl) && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg">
+                        <ZoomIn className="h-8 w-8 text-white/90" />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-muted-foreground p-4 text-center flex flex-col items-center justify-center h-full">
+                    <Upload className="mx-auto h-8 w-8 mb-2 opacity-50" />
+                    <span className="text-xs">Import a photo to start</span>
+                  </div>
+                )}
+                {(isLoading || isTuningWithAI) && (
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center backdrop-blur-sm space-y-1 z-10 rounded-lg">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    <p className="text-xs text-muted-foreground">{isTuningWithAI ? 'AI Tuning...' : 'Processing...'}</p>
+                    <Progress value={progress} className="w-2/3 max-w-xs h-1" />
+                  </div>
+                )}
+              </div>
+            </div>
+
 
             {/* Re-apply Button */}
             <div className="space-y-1">
@@ -590,13 +632,12 @@ export default function Home() {
           </div>
 
           {/* Right Column: Image Preview - hidden on mobile, flex on md+ */}
-          <div className="md:col-span-3 space-y-2 md:space-y-3 flex flex-col h-full hidden md:flex">
+          <div className="md:col-span-3 space-y-2 md:space-y-3 flex-col h-full hidden md:flex"> {/* Added flex back here to enable flex-grow */}
              <Label className="text-sm font-medium block text-center text-foreground/80 flex-shrink-0">Preview</Label>
-             {/* Added flex items-center justify-center to this div for better image centering */}
              <div className="w-full bg-muted/50 rounded-lg overflow-hidden border border-border/50 relative shadow-inner cursor-pointer group flex-grow flex items-center justify-center" onClick={handleImageClick}>
                 {displayUrl ? (
                   <>
-                    <Image src={displayUrl} alt={displayAlt} fill sizes="(max-width: 768px) 100vw, 75vw" style={{ objectFit: 'contain' }} data-ai-hint={showOriginalPreview ? "original preview" : (filteredUrl ? "filtered preview" : "original preview")} unoptimized priority={!filteredUrl} />
+                    <Image src={displayUrl} alt={displayAlt} fill sizes="(min-width: 768px) 75vw, 0vw" style={{ objectFit: 'contain' }} data-ai-hint={showOriginalPreview ? "original preview" : (filteredUrl ? "filtered preview" : "original preview")} unoptimized priority={!filteredUrl} />
                     {(filteredUrl || originalDataUrl) && (
                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg">
                              <ZoomIn className="h-10 w-10 text-white/90" />
